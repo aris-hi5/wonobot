@@ -2527,7 +2527,7 @@ class RobotMain(object):
             code = self._arm.set_position(*self.position_jig_B_grab, speed=self._tcp_speed-50,
                                             mvacc=self._tcp_acc, radius=0.0, wait=True)
             if not self._check_code(code, 'set_position'):
-                return
+                return 
 
         elif self.capsule_position == 3:
         # elif user_input == '3':
