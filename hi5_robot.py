@@ -40,18 +40,20 @@ import os
 # 카메라 관련 import
 import cv2
 import cv2.aruco as aruco
+import mediapipe as mp
+import torch
+from ultralytics import YOLO
+import cvzone
+from cvzone.HandTrackingModule import HandDetector
+
 import numpy as np
-import time
-
-
-import random
 
 from hi5_sound import Hi5_Sound
 
-import threading
+import rclpy
+from rclpy.node import Node
 
-
-class RobotMain(object):
+class RobotMain(Node):
     """Robot Main Class"""
 
     def __init__(self, robot, **kwargs):
@@ -67,44 +69,60 @@ class RobotMain(object):
         self._angle_speed = 20
         self._angle_acc = 500
 
+        self.motion_num = 0
         self.capsule_position = 0 
+        self.return_capsule_position = 0
         self.detect_sealing = 0
+        self.dondurma_detected = False
+        self.dondurma_someone = True
 
         self.invaded = 0
 
+        self.xy = None
+
+        self.a = False
+
+        self.json_message = None
+        self.icecream = None
+        self.topping = None
+        self.topping_list = None
 
         # self.position_home = [180, -42.1, 7.4, 186.7, 41.5, 0] #angle
-        
-        
-        self.position_jig_A_grab = [-255.2, -133.8, 200, 68.3, 86.1, -47.0] #linear
-        self.position_jig_B_grab = [-152.3, -127.0, 200, 4.8, 89.0, -90.7] #linear
-        self.position_jig_C_grab = [-76.6, -144.6, 200, 5.7, 88.9, -50.1] #linear
+ 
         self.position_sealing_check = [-136.8, 71.5, 307.6, 69.6, -73.9, -59] #Linear
-        self.position_capsule_place = [234.9, 135.9, 465.9, 133.6, 87.2, -142.1] #Linear
-        self.position_before_capsule_place = self.position_capsule_place.copy()
-        self.position_before_capsule_place[2] += 25
-        self.position_cup_grab = [214.0, -100.2, 145.5, -25.6, -88.5, 97.8] #linear
-
-        
         
         self.position_icecream_with_topping = [168.7, 175.6, 359.5, 43.9, 88.3, 83.3] #Linear
         self.position_icecream_no_topping = [48.4, -13.8, 36.3, 193.6, 42.0, -9.2] #angle
         self.position_jig_A_serve = [-258.7, -136.4, 208.2, 43.4, 88.7, -72.2] #Linear
         self.position_jig_B_serve = [-166.8, -126.5, 200.9, -45.2, 89.2, -133.6] #Linear
         self.position_jig_C_serve = [-63.1, -138.2, 199.5, -45.5, 88.1, -112.1] #Linear
-        self.position_capsule_grab = [234.2, 129.8, 464.5, -153.7, 87.3, -68.7] #Linear
 
 
         #--------Hi5----------
         # self.position_home = [180, -45, 0, 180, 45, 0] #angle
-        self.position_home = [180.00002, -24.999982, 14.999978, 180.00002, 50.000021, 0.0]
-
+        # self.position_home = [180.00002, -24.999982, 14.999978, 180.00002, 50.000021, 0.0]
+        self.position_home = [180.00002, -30, 10, 180.00002, 50.000021, 0.0] #angle
 
         self.position_icecream = [243.1, 134.7, 300, -59.6, 88.5, 29.5] #linear
-        self.position_finish = [270, -45, 0, 180, 45, 0] #angle
+        # self.position_finish = [270, -45, 0, 180, 45, 0] #angle
+        # 270, -35, 4.5, 180, 50, 0
+
+        # self.position_finish = [270.000001, -24.999982, 14.999978, 180.00002, 50.000021, 0.0] #angle
+        self.position_finish = [270.000001, -24.999982, 14.999978, 180.00002, 50.000021, 0.0] #angle
+        self.position_jig_A_grab = [-255.2, -133.8, 200, 68.3, 86.1, -47.0] #linear
+        self.position_jig_B_grab = [-152.3, -127.0, 200, 4.8, 89.0, -90.7] #linear
+        self.position_jig_C_grab = [-76.6, -144.6, 200, 5.7, 88.9, -50.1] #linear
         self.position_topping_A = [-194.485367, 165.352158, 300, 15.641404, 89.68411, 143.873541] #Linear
         self.position_topping_B = [-133.771973, 141.502975, 300, 53.655951, 89.68411, 143.873541] #Linear
         self.position_topping_C = [-63.588264, 163.637115, 300, 90, 89.68411, 143.873541] #Linear
+        self.position_capsule_grab = [234.2, 129.8, 464.5, -153.7, 87.3, -68.7] #Linear
+        self.position_capsule_place = [234.9, 135.9, 465.9, 133.6, 87.2, -142.1] #Linear
+        self.position_before_capsule_place = self.position_capsule_place.copy()
+        self.position_before_capsule_place[2] += 25
+        self.position_cup_grab = [214.0, -100.2, 145.5, -25.6, -88.5, 97.8] #linear
+        self.Dondurma_start_position = [0.0, -500, 285, 54.735632, 89.999981, -35.264406] #linear
+        self.Dondurma_end_position = [0.0, -180, 285, 54.735632, 89.999981, -35.264406] #linear
+
 
         # Robot init
     def _robot_init(self):
@@ -320,7 +338,7 @@ class RobotMain(object):
                         if not self._check_code(code, 'set_state'):
                             return
                         sys.exit()
-                        self.is_alive = False
+                        self.codeis_alive = False
                         print('program exit')
 
                     # 픽업존 아이스크림 뺐는지 여부 확인
@@ -334,7 +352,6 @@ class RobotMain(object):
                             print('000000000000000000000000000000')
 
                     # 실링 존재 여부 확인
-
                     if self.recv_msg[0].find('sealing_pass') >= 0 and self.state == 'icecreaming':
                         self.order_msg['makeReq']['sealing'] = 'go'
                         print('socket_go')
@@ -402,182 +419,398 @@ class RobotMain(object):
                         print('except')
                         # pass
 
-    # =================================  motion  =======================================
-    def motion_home(self):
-        self.capsule_position = 0 
-        self.detect_sealing = 0
+    def socket1_connect(self):
 
-        code = self._arm.set_cgpio_analog(0, 0)
-        if not self._check_code(code, 'set_cgpio_analog'):
-            return
-        code = self._arm.set_cgpio_analog(1, 0)
-        if not self._check_code(code, 'set_cgpio_analog'):
-            return
+        self.HOST = '192.168.1.7'
+        self.PORT = 9005
+        self.BUFSIZE = 1024
+        self.ADDR = (self.HOST, self.PORT)
 
-        # press_up
-        code = self._arm.set_cgpio_digital(3, 0, delay_sec=0)
-        if not self._check_code(code, 'set_cgpio_digital'):
-            return
-
-        # Joint Motion
-        self._angle_speed = 80
-        self._angle_acc = 200
+        # self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            self.clientSocket.send('motion_home_start'.encode('utf-8'))
+            self.clientSocket.shutdown(1)
+            self.clientSocket.close()
         except:
-            print('socket error')
-        print('motion_home start')
-        # designed home
-        # code = self._arm.set_servo_angle(angle=[179.0, -17.9, 17.7, 176.4, 61.3, 5.4], speed=self._angle_speed,
-        #                                  mvacc=self._angle_acc, wait=True, radius=10.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #     return
-        code = self._arm.set_servo_angle(angle=self.position_home, speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=True, radius=0.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-        print('motion_home finish')
-        # self.clientSocket.send('motion_home_finish'.encode('utf-8'))
-
-    def motion_grab_capsule(self):
-
-        code = self._arm.set_cgpio_analog(0, 5)
-        if not self._check_code(code, 'set_cgpio_analog'):
-            return
-        code = self._arm.set_cgpio_analog(1, 5)
-        if not self._check_code(code, 'set_cgpio_analog'):
-            return
-
-        # Joint Motion
-        self._angle_speed = 100
-        self._angle_acc = 100
-
-        self._tcp_speed = 100
-        self._tcp_acc = 1000
-
-        '''
-        code = self._arm.close_lite6_gripper()
-        if not self._check_code(code, 'close_lite6_gripper'):
-            return
-        time.sleep(1)
-        code = self._arm.open_lite6_gripper()
-        if not self._check_code(code, 'open_lite6_gripper'):
-            return
-        time.sleep(1)
-        '''
-        code = self._arm.stop_lite6_gripper()
-        if not self._check_code(code, 'stop_lite6_gripper'):
-            return
-        time.sleep(0.5)
-
-        try:
-            self.clientSocket.send('motion_grab_capsule_start'.encode('utf-8'))
-        except:
-            print('socket error')
-
-        # code = self._arm.set_servo_angle(angle=[175.4, 28.7, 23.8, 84.5, 94.7, -5.6], speed=self._angle_speed,
-        #                                 mvacc=self._angle_acc, wait=True, radius=0.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #    return
-
-        if self.order_msg['makeReq']['jigNum'] in ['A']:
-            # code = self._arm.set_servo_angle(angle=[166.1, 30.2, 25.3, 75.3, 93.9, -5.4], speed=self._angle_speed,
-            #                                  mvacc=self._angle_acc, wait=True, radius=0.0)
-            # if not self._check_code(code, 'set_servo_angle'):
-            #     return
             pass
-        else:
 
-            code = self._arm.set_servo_angle(angle=[176, 31.7, 31, 76.7, 91.2, -1.9], speed=self._angle_speed,
-                                             mvacc=self._angle_acc, wait=True, radius=0.0)
-            if not self._check_code(code, 'set_servo_angle'):
-                return
-            # code = self._arm.set_servo_angle(angle=[166.1, 30.2, 25.3, 75.3, 93.9, -5.4], speed=self._angle_speed,
-            #                                  mvacc=self._angle_acc, wait=False, radius=20.0)
-            # if not self._check_code(code, 'set_servo_angle'):
-            #     return
+        self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # self
+        self.serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # self.serverSocket.allow_reuse_address = True
+        while True:
+            try:
+                self.serverSocket.bind(self.ADDR)
+                print("bind")
+
+                while True:
+                    self.serverSocket.listen(1)
+                    print(f'[LISTENING] Server is listening on kiosk_server')
+                    time.sleep(1)
+                    try:
+                        while True:
+                            try:
+                                self.clientSocket, addr_info = self.serverSocket.accept()
+                                print("socket1 accepted")
+                                break
+                            except:
+                                time.sleep(1)
+                                print('except')
+                                # break
+
+                        break
+
+                    except socket.timeout:
+                        print("socket1 timeout")
+
+                    except:
+                        pass
+                break
+            except:
+                pass
+        # self.clientSocket.settimeout(10.0)
+        print("accept")
+        print("--client info--")
+        # print(self.clientSocket)
+
+        self.connected = True
+        self.state = 'ready'
+
+        # ------------------- receive msg start -----------
+        while self.connected:
+            print('loop start')
+            time.sleep(0.5)
+            try:
+                print('waiting')
+                self.clientSocket.settimeout(10.0)
+                self.recv_msg = self.clientSocket.recv(1024).decode('utf-8')
+
+                print('\n' + self.recv_msg)
+                if self.recv_msg == '':
+                    print('here')
+                    # continue
+                    # pass
+                    # break
+                    raise Exception('empty msg')
+                
+               
+                self.json_message = self.recv_msg
 
 
-        code = self._arm.open_lite6_gripper()
-        if not self._check_code(code, 'open_lite6_gripper'):
-            return
-        time.sleep(1)
+                # JSON 메시지
+                # json_message = '''
+                # {
+                #     "OR": [
+                #         {"orderId": "1", "icecream": "choco", "topping":"cereal,oreo,chocoball"}
+                #     ]
+                # }
+                # '''
 
-        if self.order_msg['makeReq']['jigNum'] == 'A':
-            code = self._arm.set_servo_angle(angle=[179.5, 33.5, 32.7, 113.0, 93.1, -2.3], speed=self._angle_speed,
-                                             mvacc=self._angle_acc, wait=False, radius=20.0)
-            if not self._check_code(code, 'set_servo_angle'):
-                return
-            # code = self._arm.set_position(*[-255.4, -139.3, 193.5, -12.7, 87.2, -126.1], speed=self._tcp_speed,
-            #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
-            # if not self._check_code(code, 'set_position'):
-            #    return
+                # # JSON 메시지 파싱
+                data = json.loads(self.json_message)
 
-            code = self._arm.set_position(*self.position_jig_A_grab, speed=self._tcp_speed,
-                                          mvacc=self._tcp_acc, radius=0.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return
+                # for order in data['OR']:
+                #     self.icecream = order['icecream']
+                #     self.topping = order['topping']
+                #     print(f"icecream: {self.icecream}, topping: {self.topping}")
 
-        elif self.order_msg['makeReq']['jigNum'] == 'B':
+                #     # 토핑의 갯수 계산
+                #     self.topping_list = [t.strip() for t in self.topping.split(',')]
+                #     # topping_count = len(topping_list)
+                    
+                #     print(self.topping_list)
+                #     self.a = True
 
-            code = self._arm.set_position(*self.position_jig_B_grab, speed=self._tcp_speed,
-                                          mvacc=self._tcp_acc, radius=0.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return
+                # 필요한 정보 추출
+                self.icecream = data["OR"]["icecream"]
+                self.topping = data["OR"]["topping"]
+                print(f"icecream: {self.icecream}, topping: {self.topping}")
 
-        elif self.order_msg['makeReq']['jigNum'] == 'C':
-            code = self._arm.set_servo_angle(angle=[182.6, 27.8, 27.7, 55.7, 90.4, -6.4], speed=self._angle_speed,
-                                             mvacc=self._angle_acc, wait=False, radius=20.0)
-            if not self._check_code(code, 'set_servo_angle'):
-                return
-            # code = self._arm.set_position(*[-76.6, -144.6, 194.3, 5.7, 88.9, -50.1], speed=self._tcp_speed, mvacc=self._tcp_acc, radius=0.0, wait=True)
-            # if not self._check_code(code, 'set_position'):
-            #    return
-            code = self._arm.set_position(*self.position_jig_C_grab, speed=self._tcp_speed,
-                                          mvacc=self._tcp_acc, radius=0.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return
+                self.topping_list = [t.strip() for t in self.topping.split(',')]
+                print(self.topping_list)
+                
+                
+                self.clientSocket.send('ERROR : already moving'.encode('utf-8'))
 
-        code = self._arm.close_lite6_gripper()
-        if not self._check_code(code, 'close_lite6_gripper'):
-            return
+                # if self.recv_msg[0] == 'app_ping':
+                    # print('app_ping received')
+                send_msg = 'robot_ping'
+                now_temp = arm.temperatures
+                now_cur = arm.currents
+                send_msg = [
+                    {
+                        'type': 'A', 'joint_name': 'Base', 'temperature': now_temp[0],
+                        'current': round(now_cur[0], 3) * 100
+                    }, {
+                        'type': 'B', 'joint_name': 'Shoulder', 'temperature': now_temp[1],
+                        'current': round(now_cur[1], 3) * 100
+                    }, {
+                        'type': 'C', 'joint_name': 'Elbow', 'temperature': now_temp[2],
+                        'current': round(now_cur[2], 3) * 100
+                    }, {
+                        'type': 'D', 'joint_name': 'Wrist1', 'temperature': now_temp[3],
+                        'current': round(now_cur[3], 3) * 100
+                    }, {
+                        'type': 'E', 'joint_name': 'Wrist2', 'temperature': now_temp[4],
+                        'current': round(now_cur[4], 3) * 100
+                    }, {
+                        'type': 'F', 'joint_name': 'Wrist3', 'temperature': now_temp[5],
+                        'current': round(now_cur[5], 3) * 100
+                    }
+                ]
 
-        time.sleep(1)
-        if self.order_msg['makeReq']['jigNum'] == 'C':
-            code = self._arm.set_position(z=150, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-                                          wait=False)
-            if not self._check_code(code, 'set_position'):
-                return
-            self._tcp_speed = 200
-            self._tcp_acc = 1000
-            code = self._arm.set_tool_position(*[0.0, 0.0, -90.0, 0.0, 0.0, 0.0], speed=self._tcp_speed,
-                                               mvacc=self._tcp_acc, wait=False)
-            if not self._check_code(code, 'set_position'):
-                return
-        else:
-            code = self._arm.set_position(z=100, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-                                          wait=False)
-            if not self._check_code(code, 'set_position'):
-                return
+                try:
+                    time.sleep(0.5)
+                    for _ in range(0,3):
+                        self.clientSocket.send(f'{send_msg}'.encode('utf-8'))
+                        time.sleep(3)
+                    print('robot_ping')
 
-        self._angle_speed = 180
-        self._angle_acc = 500
+                except Exception as e:
+                    self.pprint('MainException: {}'.format(e))
+                    print('ping send fail')
+                # send_msg = arm.temperatures
+                if self.state == 'ready':
+                    print('STATE : ready for new msg')
+                else:
+                    print('STATE : now moving')
 
-        if self.order_msg['makeReq']['sealing'] in ['yes']:
-            code = self._arm.set_servo_angle(angle=[145, -18.6, 10.5, 97.5, 81.4, 145], speed=self._angle_speed,
-                                             mvacc=self._angle_acc, wait=False, radius=30.0)
-            if not self._check_code(code, 'set_servo_angle'):
-                return
-        else :
-            code = self._arm.set_servo_angle(angle=[146.1, -10.7, 10.9, 102.7, 92.4, 24.9], speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=True, radius=0.0)
-            if not self._check_code(code, 'set_servo_angle'):
-                return
-        try:
-            self.clientSocket.send('motion_grab_capsule_finish'.encode('utf-8'))
-        except:
-            print('socket error')
+                # else:
+                #     self.recv_msg[0] = self.recv_msg[0].replace("app_ping", "")
+                #     if self.recv_msg[0] in ['breath', 'greet', 'farewell' 'dance_random', 'dance_a', 'dance_b',
+                #                             'dance_c',
+                #                             'sleep', 'comeon']:
+                #         print(f'got message : {self.recv_msg[0]}')
+                #         if self.state == 'ready':
+                #             self.state = self.recv_msg[0]
+                #     elif self.recv_msg[0] == 'robot_script_stop':
+                #         code = self._arm.set_state(4)
+                #         if not self._check_code(code, 'set_state'):
+                #             return
+                #         sys.exit()
+                #         self.codeis_alive = False
+                #         print('program exit')
 
+                #     # 픽업존 아이스크림 뺐는지 여부 확인
+                #     elif self.recv_msg[0].find('icecream_go') >= 0 or self.recv_msg[0].find(
+                #             'icecream_stop') >= 0 and self.state == 'icecreaming':
+                #         print(self.recv_msg[0])
+                #         if self.recv_msg[0].find('icecream_go') >= 0:
+                #             self.order_msg['makeReq']['latency'] = 'go'
+                #         else:
+                #             self.order_msg['makeReq']['latency'] = 'stop'
+                #             print('000000000000000000000000000000')
+
+                #     # 실링 존재 여부 확인
+                #     if self.recv_msg[0].find('sealing_pass') >= 0 and self.state == 'icecreaming':
+                #         self.order_msg['makeReq']['sealing'] = 'go'
+                #         print('socket_go')
+                #     elif self.recv_msg[0].find('sealing_reject') >= 0 and self.state == 'icecreaming':
+                #         self.order_msg['makeReq']['sealing'] = 'stop'
+                #         print('socket_stop')
+
+                #     else:
+                #         # print('else')
+                #         try:
+                #             self.order_msg = json.loads(self.recv_msg[0])
+                #             if self.order_msg['type'] == 'ICECREAM':
+                #                 if self.state == 'ready':
+                #                     print('STATE : icecreaming')
+                #                     print(f'Order message : {self.order_msg}')
+                #                     self.state = 'icecreaming'
+                #             # else:
+                #             #    self.clientSocket.send('ERROR : already moving'.encode('utf-8'))
+                #             else:
+                #                 self.clientSocket.send('ERROR : wrong msg received'.encode('utf-8'))
+                #         except:
+                #             pass
+                # self.recv_msg[0] = 'zzz'
+
+            except Exception as e:
+                self.pprint('MainException: {}'.format(e))
+                # if e == 'empty msg' :
+                #    pass
+                # self.connected = False
+                print('connection lost')
+                while True:
+                    time.sleep(2)
+                    try:
+
+                        try:
+                            self.serverSocket.shutdown(socket.SHUT_RDWR)
+                            self.serverSocket.close()
+                        except:
+                            pass
+
+                        print('socket_making')
+                        self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        self.serverSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+                        self.serverSocket.bind(self.ADDR)
+                        print("bind")
+
+                        while True:
+                            print('listening')
+                            self.serverSocket.listen(1)
+                            print(f'reconnecting')
+                            try:
+                                self.clientSocket, addr_info = self.serverSocket.accept()
+                                break
+
+                            except socket.timeout:
+                                print('socket.timeout')
+                                break
+
+                            except:
+                                pass
+                        break
+                    except Exception as e:
+                        self.pprint('MainException: {}'.format(e))
+                        print('except')
+                        # pass
+
+    # =================================  motion  =======================================
+    ''' # def motion_grab_capsule(self):
+    # def motion_grab_capsule(self):
+
+    #     code = self._arm.set_cgpio_analog(0, 5)
+    #     if not self._check_code(code, 'set_cgpio_analog'):
+    #         return
+    #     code = self._arm.set_cgpio_analog(1, 5)
+    #     if not self._check_code(code, 'set_cgpio_analog'):
+    #         return
+
+    #     # Joint Motion
+    #     self._angle_speed = 100
+    #     self._angle_acc = 100
+
+    #     self._tcp_speed = 100
+    #     self._tcp_acc = 1000
+
+    
+    #     # code = self._arm.close_lite6_gripper()
+    #     # if not self._check_code(code, 'close_lite6_gripper'):
+    #     #     return
+    #     # time.sleep(1)
+    #     # code = self._arm.open_lite6_gripper()
+    #     # if not self._check_code(code, 'open_lite6_gripper'):
+    #     #     return
+    #     # time.sleep(1)
+    #
+    #     code = self._arm.stop_lite6_gripper()
+    #     if not self._check_code(code, 'stop_lite6_gripper'):
+    #         return
+    #     time.sleep(0.5)
+
+    #     try:
+    #         self.clientSocket.send('motion_grab_capsule_start'.encode('utf-8'))
+    #     except:
+    #         print('socket error')
+
+    #     # code = self._arm.set_servo_angle(angle=[175.4, 28.7, 23.8, 84.5, 94.7, -5.6], speed=self._angle_speed,
+    #     #                                 mvacc=self._angle_acc, wait=True, radius=0.0)
+    #     # if not self._check_code(code, 'set_servo_angle'):
+    #     #    return
+
+    #     if self.order_msg['makeReq']['jigNum'] in ['A']:
+    #         # code = self._arm.set_servo_angle(angle=[166.1, 30.2, 25.3, 75.3, 93.9, -5.4], speed=self._angle_speed,
+    #         #                                  mvacc=self._angle_acc, wait=True, radius=0.0)
+    #         # if not self._check_code(code, 'set_servo_angle'):
+    #         #     return
+    #         pass
+    #     else:
+
+    #         code = self._arm.set_servo_angle(angle=[176, 31.7, 31, 76.7, 91.2, -1.9], speed=self._angle_speed,
+    #                                          mvacc=self._angle_acc, wait=True, radius=0.0)
+    #         if not self._check_code(code, 'set_servo_angle'):
+    #             return
+    #         # code = self._arm.set_servo_angle(angle=[166.1, 30.2, 25.3, 75.3, 93.9, -5.4], speed=self._angle_speed,
+    #         #                                  mvacc=self._angle_acc, wait=False, radius=20.0)
+    #         # if not self._check_code(code, 'set_servo_angle'):
+    #         #     return
+
+
+    #     code = self._arm.open_lite6_gripper()
+    #     if not self._check_code(code, 'open_lite6_gripper'):
+    #         return
+    #     time.sleep(1)
+
+    #     if self.order_msg['makeReq']['jigNum'] == 'A':
+    #         code = self._arm.set_servo_angle(angle=[179.5, 33.5, 32.7, 113.0, 93.1, -2.3], speed=self._angle_speed,
+    #                                          mvacc=self._angle_acc, wait=False, radius=20.0)
+    #         if not self._check_code(code, 'set_servo_angle'):
+    #             return
+    #         # code = self._arm.set_position(*[-255.4, -139.3, 193.5, -12.7, 87.2, -126.1], speed=self._tcp_speed,
+    #         #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
+    #         # if not self._check_code(code, 'set_position'):
+    #         #    return
+
+    #         code = self._arm.set_position(*self.position_jig_A_grab, speed=self._tcp_speed,
+    #                                       mvacc=self._tcp_acc, radius=0.0, wait=True)
+    #         if not self._check_code(code, 'set_position'):
+    #             return
+
+    #     elif self.order_msg['makeReq']['jigNum'] == 'B':
+
+    #         code = self._arm.set_position(*self.position_jig_B_grab, speed=self._tcp_speed,
+    #                                       mvacc=self._tcp_acc, radius=0.0, wait=True)
+    #         if not self._check_code(code, 'set_position'):
+    #             return
+
+    #     elif self.order_msg['makeReq']['jigNum'] == 'C':
+    #         code = self._arm.set_servo_angle(angle=[182.6, 27.8, 27.7, 55.7, 90.4, -6.4], speed=self._angle_speed,
+    #                                          mvacc=self._angle_acc, wait=False, radius=20.0)
+    #         if not self._check_code(code, 'set_servo_angle'):
+    #             return
+    #         # code = self._arm.set_position(*[-76.6, -144.6, 194.3, 5.7, 88.9, -50.1], speed=self._tcp_speed, mvacc=self._tcp_acc, radius=0.0, wait=True)
+    #         # if not self._check_code(code, 'set_position'):
+    #         #    return
+    #         code = self._arm.set_position(*self.position_jig_C_grab, speed=self._tcp_speed,
+    #                                       mvacc=self._tcp_acc, radius=0.0, wait=True)
+    #         if not self._check_code(code, 'set_position'):
+    #             return
+
+    #     code = self._arm.close_lite6_gripper()
+    #     if not self._check_code(code, 'close_lite6_gripper'):
+    #         return
+
+    #     time.sleep(1)
+    #     if self.order_msg['makeReq']['jigNum'] == 'C':
+    #         code = self._arm.set_position(z=150, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+    #                                       wait=False)
+    #         if not self._check_code(code, 'set_position'):
+    #             return
+    #         self._tcp_speed = 200
+    #         self._tcp_acc = 1000
+    #         code = self._arm.set_tool_position(*[0.0, 0.0, -90.0, 0.0, 0.0, 0.0], speed=self._tcp_speed,
+    #                                            mvacc=self._tcp_acc, wait=False)
+    #         if not self._check_code(code, 'set_position'):
+    #             return
+    #     else:
+    #         code = self._arm.set_position(z=100, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+    #                                       wait=False)
+    #         if not self._check_code(code, 'set_position'):
+    #             return
+
+    #     self._angle_speed = 180
+    #     self._angle_acc = 500
+
+    #     if self.order_msg['makeReq']['sealing'] in ['yes']:
+    #         code = self._arm.set_servo_angle(angle=[145, -18.6, 10.5, 97.5, 81.4, 145], speed=self._angle_speed,
+    #                                          mvacc=self._angle_acc, wait=False, radius=30.0)
+    #         if not self._check_code(code, 'set_servo_angle'):
+    #             return
+    #     else :
+    #         code = self._arm.set_servo_angle(angle=[146.1, -10.7, 10.9, 102.7, 92.4, 24.9], speed=self._angle_speed,
+    #                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+    #         if not self._check_code(code, 'set_servo_angle'):
+    #             return
+    #     try:
+    #         self.clientSocket.send('motion_grab_capsule_finish'.encode('utf-8'))
+    #     except:
+    #         print('socket error')
+    '''
+    
+    ''' # def motion_check_sealing(self):
     def motion_check_sealing(self):
         print('sealing check')
         self._angle_speed = 200
@@ -587,325 +820,277 @@ class RobotMain(object):
                                           mvacc=self._tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
+    '''
 
-    def motion_place_fail_capsule(self):
-        code = self._arm.set_servo_angle(angle=[176, -2, 30.7, 79.5, 98.2, 29.3], speed=self._angle_speed,
-                                        mvacc=self._angle_acc, wait=False, radius=20.0)
+    ''' # def motion_grab_cup(self):
+    def motion_grab_cup(self):
+        try:
+            self.clientSocket.send('motion_grab_cup_start'.encode('utf-8'))
+        except:
+            print('socket error')
+
+        code = self._arm.set_position(*[233.4, 10.3, 471.1, -172.2, 87.3, -84.5], speed=self._tcp_speed,
+                                      mvacc=self._tcp_acc, radius=20.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        time.sleep(1)
+
+        if self.order_msg['makeReq']['cupNum'] in ['A', 'B']:
+            code = self._arm.set_servo_angle(angle=[-2.8, -2.5, 45.3, 119.8, -79.2, -18.8], speed=self._angle_speed,
+                                             mvacc=self._angle_acc, wait=False, radius=30.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            # code = self._arm.set_position(*[193.8, -100.2, 146.6, 135.9, -86.0, -55.3], speed=self._tcp_speed, mvacc=self._tcp_acc, radius=0.0, wait=True)
+            # if not self._check_code(code, 'set_position'):
+            #    return
+            code = self._arm.set_position(*[195.0, -96.5, 200.8, -168.0, -87.1, -110.5], speed=self._tcp_speed,
+                                          mvacc=self._tcp_acc, radius=10.0, wait=False)
+            if not self._check_code(code, 'set_position'):
+                return
+            # code = self._arm.set_position(*[195.0, -96.5, 145.8, -168.0, -87.1, -110.5], speed=self._tcp_speed,
+            #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
+            # if not self._check_code(code, 'set_position'):
+            #    return
+            # code = self._arm.set_position(*[195.5, -96.6, 145.6, 179.0, -87.0, -97.1], speed=self._tcp_speed,
+            #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
+            # if not self._check_code(code, 'set_position'):
+            #    return
+            # code = self._arm.set_position(*[214.0, -100.2, 145.0, -25.6, -88.5, 95.8], speed=self._tcp_speed, mvacc=self._tcp_acc, radius=0.0, wait=True)
+            # if not self._check_code(code, 'set_position'):
+            #    return
+            code = self._arm.set_position(*self.position_cup_grab, speed=self._tcp_speed,
+                                          mvacc=self._tcp_acc, radius=0.0, wait=True)
+            if not self._check_code(code, 'set_position'):
+                return
+        code = self._arm.close_lite6_gripper()
+        if not self._check_code(code, 'close_lite6_gripper'):
+            return
+        time.sleep(2)
+
+        code = self._arm.set_position(z=120, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+                                      wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        code = self._arm.set_servo_angle(angle=[2.9, -31.0, 33.2, 125.4, -30.4, -47.2], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=True, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
-        if self.capsule_position == 1:
-            code = self._arm.set_position(*[-255.2, -133.8, 250, 68.3, 86.1, -47.0], speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
-            if not self._check_code(code, 'set_position'):
+
+        code = self._arm.set_cgpio_analog(0, 5)
+        if not self._check_code(code, 'set_cgpio_analog'):
+            return
+        code = self._arm.set_cgpio_analog(1, 5)
+        if not self._check_code(code, 'set_cgpio_analog'):
+            return
+        try:
+            self.clientSocket.send('motion_grab_cup_finish'.encode('utf-8'))
+        except:
+            print('socket error')
+
+        time.sleep(0.5)
+    '''
+
+    ''' # def motion_topping(self):
+    def motion_topping(self):
+        try:
+            self.clientSocket.send('motion_topping_start'.encode('utf-8'))
+        except:
+            print('socket error')
+
+        print('send')
+
+        if self.order_msg['makeReq']['topping'] == '1':
+            code = self._arm.set_servo_angle(angle=[36.6, -36.7, 21.1, 85.6, 59.4, 44.5], speed=self._angle_speed,
+                                             mvacc=self._angle_acc, wait=True, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
                 return
 
-            code = self._arm.set_position(*self.position_jig_A_grab, speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return
+            if self.order_msg['makeReq']['jigNum'] == 'C':
+                code = self._arm.set_position(*self.position_topping_C, speed=self._tcp_speed,
+                                              mvacc=self._tcp_acc, radius=0.0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+                code = self._arm.set_cgpio_digital(2, 1, delay_sec=0)
+                if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+                code = self._arm.set_position(z=20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+                                              wait=False)
+                if not self._check_code(code, 'set_position'):
+                    return
+                code = self._arm.set_pause_time(int(self.order_msg['makeReq']['toppingAmount']) - 3)
+                if not self._check_code(code, 'set_pause_time'):
+                    return
+                code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
+                if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+                code = self._arm.set_pause_time(3)
+                if not self._check_code(code, 'set_pause_time'):
+                    return
+                code = self._arm.set_cgpio_digital(2, 0, delay_sec=0)
+                if not self._check_code(code, 'set_cgpio_digital'):
+                    return
 
-        elif self.capsule_position == 2:
-            code = self._arm.set_position(*[-152.3, -127.0, 250, 4.8, 89.0, -90.7], speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
-            if not self._check_code(code, 'set_position'):
-                return
+                code = self._arm.set_position(z=-20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc,
+                                              relative=True, wait=False)
+                if not self._check_code(code, 'set_position'):
+                    return
 
-            code = self._arm.set_position(*self.position_jig_B_grab, speed=self._tcp_speed-50,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return
+            elif self.order_msg['makeReq']['jigNum'] in ['B']:
+                code = self._arm.set_servo_angle(angle=[55.8, -48.2, 14.8, 86.1, 60.2, 58.7], speed=self._angle_speed,
+                                                 mvacc=self._angle_acc, wait=False, radius=20.0)
+                if not self._check_code(code, 'set_servo_angle'):
+                    return
+                # code = self._arm.set_servo_angle(angle=[87.5, -48.2, 13.5, 125.1, 44.5, 46.2], speed=self._angle_speed,
+                #                                 mvacc=self._angle_acc, wait=True, radius=0.0)
+                # if not self._check_code(code, 'set_servo_angle'):
+                #    return
+                code = self._arm.set_servo_angle(angle=self.position_topping_B, speed=self._angle_speed,
+                                                 mvacc=self._angle_acc, wait=True, radius=0.0)
+                if not self._check_code(code, 'set_servo_angle'):
+                    return
+                code = self._arm.set_cgpio_digital(1, 1, delay_sec=0)
+                if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+                code = self._arm.set_position(z=20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+                                              wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+                code = self._arm.set_pause_time(int(self.order_msg['makeReq']['toppingAmount']) - 4)
+                if not self._check_code(code, 'set_pause_time'):
+                    return
+                code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
+                if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+                code = self._arm.set_pause_time(4)
+                if not self._check_code(code, 'set_pause_time'):
+                    return
+                code = self._arm.set_cgpio_digital(1, 0, delay_sec=0)
+                if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+                code = self._arm.set_position(z=-20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc,
+                                              relative=True, wait=False)
+                if not self._check_code(code, 'set_position'):
+                    return
+                code = self._arm.set_servo_angle(angle=[87.5, -48.2, 13.5, 125.1, 44.5, 46.2], speed=self._angle_speed,
+                                                 mvacc=self._angle_acc, wait=False, radius=10.0)
+                if not self._check_code(code, 'set_servo_angle'):
+                    return
+                code = self._arm.set_position(*[43.6, 137.9, 350.1, -92.8, 87.5, 5.3], speed=self._tcp_speed,
+                                              mvacc=self._tcp_acc, radius=10.0, wait=False)
+                if not self._check_code(code, 'set_position'):
+                    return
 
-        elif self.capsule_position == 3:
-            code = self._arm.set_position(*[-76.6, -144.6, 250, 5.7, 88.9, -50.1], speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
-            if not self._check_code(code, 'set_position'):
-                return
-            code = self._arm.set_position(*self.position_jig_C_grab, speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=True)
+            elif self.order_msg['makeReq']['jigNum'] == 'A':
+                code = self._arm.set_position(*self.position_topping_A, speed=self._tcp_speed,
+                                              mvacc=self._tcp_acc, radius=0.0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+                code = self._arm.set_cgpio_digital(0, 1, delay_sec=0)
+                if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+                code = self._arm.set_pause_time(int(self.order_msg['makeReq']['toppingAmount']) - 1)
+                if not self._check_code(code, 'set_pause_time'):
+                    return
+                code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
+                if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+                code = self._arm.set_pause_time(1)
+                if not self._check_code(code, 'set_pause_time'):
+                    return
+                code = self._arm.set_cgpio_digital(0, 0, delay_sec=0)
+                if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+                code = self._arm.set_servo_angle(angle=[130.0, -33.1, 12.5, 194.3, 51.0, 0.0], speed=self._angle_speed,
+                                                 mvacc=self._angle_acc, wait=True, radius=0.0)
+                if not self._check_code(code, 'set_servo_angle'):
+                    return
+                code = self._arm.set_position(*[-38.2, 132.2, 333.9, -112.9, 86.3, -6.6], speed=self._tcp_speed,
+                                              mvacc=self._tcp_acc, radius=10.0, wait=False)
+                if not self._check_code(code, 'set_position'):
+                    return
+                code = self._arm.set_position(*[43.6, 137.9, 350.1, -92.8, 87.5, 5.3], speed=self._tcp_speed,
+                                              mvacc=self._tcp_acc, radius=10.0, wait=False)
+                if not self._check_code(code, 'set_position'):
+                    return
+            # code = self._arm.set_position(*[165.1, 162.9, 362.5, -31.7, 86.6, 9.5], speed=self._tcp_speed,
+            #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
+            # if not self._check_code(code, 'set_position'):
+            #    return
+            code = self._arm.set_position(*self.position_icecream_with_topping, speed=self._tcp_speed,
+                                          mvacc=self._tcp_acc, radius=0.0, wait=True)
             if not self._check_code(code, 'set_position'):
                 return
         else:
-            pass    
-        
-        code = self._arm.open_lite6_gripper()
-        if not self._check_code(code, 'open_lite6_gri1pper'):
-            return
-        time.sleep(1)
-        code = self._arm.stop_lite6_gripper()
-        if not self._check_code(code, 'stop_lite6_gripper'):
-            return
-        time.sleep(0.5)
+            # code = self._arm.set_servo_angle(angle=[45.8, -17.9, 33.5, 186.9, 41.8, -7.2], speed=self._angle_speed,
+            #                                 mvacc=self._angle_acc, wait=True, radius=0.0)
+            # if not self._check_code(code, 'set_servo_angle'):
+            #    return
+            code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
+            if not self._check_code(code, 'set_cgpio_digital'):
+                return
+            code = self._arm.set_servo_angle(angle=self.position_icecream_no_topping, speed=self._angle_speed,
+                                             mvacc=self._angle_acc, wait=True, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+        try:
+            self.clientSocket.send('motion_topping_finish'.encode('utf-8'))
+        except:
+            print('socket error')
 
-        code = self._arm.set_tool_position(z=-70, speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, wait=False)
+        time.sleep(0.5)
+    '''
+
+    ''' # def motion_make_icecream(self):
+    def motion_make_icecream(self):
+        try:
+            self.clientSocket.send('motion_make_icecream_start'.encode('utf-8'))
+        except:
+            print('socket error')
+        if self.order_msg['makeReq']['topping'] == '1':
+            time.sleep(5)
+        else:
+            time.sleep(8)
+        try:
+            self.clientSocket.send('motion_icecreaming_1'.encode('utf-8'))
+        except:
+            print('socket error')
+        time.sleep(4)
+        code = self._arm.set_position(z=-20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+                                      wait=True)
         if not self._check_code(code, 'set_position'):
             return
-        
-        self.motion_home()
-
-    # def motion_grab_cup(self):
-    #     try:
-    #         self.clientSocket.send('motion_grab_cup_start'.encode('utf-8'))
-    #     except:
-    #         print('socket error')
-
-    #     code = self._arm.set_position(*[233.4, 10.3, 471.1, -172.2, 87.3, -84.5], speed=self._tcp_speed,
-    #                                   mvacc=self._tcp_acc, radius=20.0, wait=False)
-    #     if not self._check_code(code, 'set_position'):
-    #         return
-    #     code = self._arm.open_lite6_gripper()
-    #     if not self._check_code(code, 'open_lite6_gripper'):
-    #         return
-    #     time.sleep(1)
-
-    #     if self.order_msg['makeReq']['cupNum'] in ['A', 'B']:
-    #         code = self._arm.set_servo_angle(angle=[-2.8, -2.5, 45.3, 119.8, -79.2, -18.8], speed=self._angle_speed,
-    #                                          mvacc=self._angle_acc, wait=False, radius=30.0)
-    #         if not self._check_code(code, 'set_servo_angle'):
-    #             return
-    #         # code = self._arm.set_position(*[193.8, -100.2, 146.6, 135.9, -86.0, -55.3], speed=self._tcp_speed, mvacc=self._tcp_acc, radius=0.0, wait=True)
-    #         # if not self._check_code(code, 'set_position'):
-    #         #    return
-    #         code = self._arm.set_position(*[195.0, -96.5, 200.8, -168.0, -87.1, -110.5], speed=self._tcp_speed,
-    #                                       mvacc=self._tcp_acc, radius=10.0, wait=False)
-    #         if not self._check_code(code, 'set_position'):
-    #             return
-    #         # code = self._arm.set_position(*[195.0, -96.5, 145.8, -168.0, -87.1, -110.5], speed=self._tcp_speed,
-    #         #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
-    #         # if not self._check_code(code, 'set_position'):
-    #         #    return
-    #         # code = self._arm.set_position(*[195.5, -96.6, 145.6, 179.0, -87.0, -97.1], speed=self._tcp_speed,
-    #         #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
-    #         # if not self._check_code(code, 'set_position'):
-    #         #    return
-    #         # code = self._arm.set_position(*[214.0, -100.2, 145.0, -25.6, -88.5, 95.8], speed=self._tcp_speed, mvacc=self._tcp_acc, radius=0.0, wait=True)
-    #         # if not self._check_code(code, 'set_position'):
-    #         #    return
-    #         code = self._arm.set_position(*self.position_cup_grab, speed=self._tcp_speed,
-    #                                       mvacc=self._tcp_acc, radius=0.0, wait=True)
-    #         if not self._check_code(code, 'set_position'):
-    #             return
-    #     code = self._arm.close_lite6_gripper()
-    #     if not self._check_code(code, 'close_lite6_gripper'):
-    #         return
-    #     time.sleep(2)
-
-    #     code = self._arm.set_position(z=120, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-    #                                   wait=True)
-    #     if not self._check_code(code, 'set_position'):
-    #         return
-    #     code = self._arm.set_servo_angle(angle=[2.9, -31.0, 33.2, 125.4, -30.4, -47.2], speed=self._angle_speed,
-    #                                      mvacc=self._angle_acc, wait=True, radius=0.0)
-    #     if not self._check_code(code, 'set_servo_angle'):
-    #         return
-
-    #     code = self._arm.set_cgpio_analog(0, 5)
-    #     if not self._check_code(code, 'set_cgpio_analog'):
-    #         return
-    #     code = self._arm.set_cgpio_analog(1, 5)
-    #     if not self._check_code(code, 'set_cgpio_analog'):
-    #         return
-    #     try:
-    #         self.clientSocket.send('motion_grab_cup_finish'.encode('utf-8'))
-    #     except:
-    #         print('socket error')
-
-    #     time.sleep(0.5)
-
-    # def motion_topping(self):
-    #     try:
-    #         self.clientSocket.send('motion_topping_start'.encode('utf-8'))
-    #     except:
-    #         print('socket error')
-
-    #     print('send')
-
-    #     if self.order_msg['makeReq']['topping'] == '1':
-    #         code = self._arm.set_servo_angle(angle=[36.6, -36.7, 21.1, 85.6, 59.4, 44.5], speed=self._angle_speed,
-    #                                          mvacc=self._angle_acc, wait=True, radius=0.0)
-    #         if not self._check_code(code, 'set_servo_angle'):
-    #             return
-
-    #         if self.order_msg['makeReq']['jigNum'] == 'C':
-    #             code = self._arm.set_position(*self.position_topping_C, speed=self._tcp_speed,
-    #                                           mvacc=self._tcp_acc, radius=0.0, wait=True)
-    #             if not self._check_code(code, 'set_position'):
-    #                 return
-    #             code = self._arm.set_cgpio_digital(2, 1, delay_sec=0)
-    #             if not self._check_code(code, 'set_cgpio_digital'):
-    #                 return
-    #             code = self._arm.set_position(z=20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-    #                                           wait=False)
-    #             if not self._check_code(code, 'set_position'):
-    #                 return
-    #             code = self._arm.set_pause_time(int(self.order_msg['makeReq']['toppingAmount']) - 3)
-    #             if not self._check_code(code, 'set_pause_time'):
-    #                 return
-    #             code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
-    #             if not self._check_code(code, 'set_cgpio_digital'):
-    #                 return
-    #             code = self._arm.set_pause_time(3)
-    #             if not self._check_code(code, 'set_pause_time'):
-    #                 return
-    #             code = self._arm.set_cgpio_digital(2, 0, delay_sec=0)
-    #             if not self._check_code(code, 'set_cgpio_digital'):
-    #                 return
-
-    #             code = self._arm.set_position(z=-20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc,
-    #                                           relative=True, wait=False)
-    #             if not self._check_code(code, 'set_position'):
-    #                 return
-
-    #         elif self.order_msg['makeReq']['jigNum'] in ['B']:
-    #             code = self._arm.set_servo_angle(angle=[55.8, -48.2, 14.8, 86.1, 60.2, 58.7], speed=self._angle_speed,
-    #                                              mvacc=self._angle_acc, wait=False, radius=20.0)
-    #             if not self._check_code(code, 'set_servo_angle'):
-    #                 return
-    #             # code = self._arm.set_servo_angle(angle=[87.5, -48.2, 13.5, 125.1, 44.5, 46.2], speed=self._angle_speed,
-    #             #                                 mvacc=self._angle_acc, wait=True, radius=0.0)
-    #             # if not self._check_code(code, 'set_servo_angle'):
-    #             #    return
-    #             code = self._arm.set_servo_angle(angle=self.position_topping_B, speed=self._angle_speed,
-    #                                              mvacc=self._angle_acc, wait=True, radius=0.0)
-    #             if not self._check_code(code, 'set_servo_angle'):
-    #                 return
-    #             code = self._arm.set_cgpio_digital(1, 1, delay_sec=0)
-    #             if not self._check_code(code, 'set_cgpio_digital'):
-    #                 return
-    #             code = self._arm.set_position(z=20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-    #                                           wait=True)
-    #             if not self._check_code(code, 'set_position'):
-    #                 return
-    #             code = self._arm.set_pause_time(int(self.order_msg['makeReq']['toppingAmount']) - 4)
-    #             if not self._check_code(code, 'set_pause_time'):
-    #                 return
-    #             code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
-    #             if not self._check_code(code, 'set_cgpio_digital'):
-    #                 return
-    #             code = self._arm.set_pause_time(4)
-    #             if not self._check_code(code, 'set_pause_time'):
-    #                 return
-    #             code = self._arm.set_cgpio_digital(1, 0, delay_sec=0)
-    #             if not self._check_code(code, 'set_cgpio_digital'):
-    #                 return
-    #             code = self._arm.set_position(z=-20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc,
-    #                                           relative=True, wait=False)
-    #             if not self._check_code(code, 'set_position'):
-    #                 return
-    #             code = self._arm.set_servo_angle(angle=[87.5, -48.2, 13.5, 125.1, 44.5, 46.2], speed=self._angle_speed,
-    #                                              mvacc=self._angle_acc, wait=False, radius=10.0)
-    #             if not self._check_code(code, 'set_servo_angle'):
-    #                 return
-    #             code = self._arm.set_position(*[43.6, 137.9, 350.1, -92.8, 87.5, 5.3], speed=self._tcp_speed,
-    #                                           mvacc=self._tcp_acc, radius=10.0, wait=False)
-    #             if not self._check_code(code, 'set_position'):
-    #                 return
-
-    #         elif self.order_msg['makeReq']['jigNum'] == 'A':
-    #             code = self._arm.set_position(*self.position_topping_A, speed=self._tcp_speed,
-    #                                           mvacc=self._tcp_acc, radius=0.0, wait=True)
-    #             if not self._check_code(code, 'set_position'):
-    #                 return
-    #             code = self._arm.set_cgpio_digital(0, 1, delay_sec=0)
-    #             if not self._check_code(code, 'set_cgpio_digital'):
-    #                 return
-    #             code = self._arm.set_pause_time(int(self.order_msg['makeReq']['toppingAmount']) - 1)
-    #             if not self._check_code(code, 'set_pause_time'):
-    #                 return
-    #             code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
-    #             if not self._check_code(code, 'set_cgpio_digital'):
-    #                 return
-    #             code = self._arm.set_pause_time(1)
-    #             if not self._check_code(code, 'set_pause_time'):
-    #                 return
-    #             code = self._arm.set_cgpio_digital(0, 0, delay_sec=0)
-    #             if not self._check_code(code, 'set_cgpio_digital'):
-    #                 return
-    #             code = self._arm.set_servo_angle(angle=[130.0, -33.1, 12.5, 194.3, 51.0, 0.0], speed=self._angle_speed,
-    #                                              mvacc=self._angle_acc, wait=True, radius=0.0)
-    #             if not self._check_code(code, 'set_servo_angle'):
-    #                 return
-    #             code = self._arm.set_position(*[-38.2, 132.2, 333.9, -112.9, 86.3, -6.6], speed=self._tcp_speed,
-    #                                           mvacc=self._tcp_acc, radius=10.0, wait=False)
-    #             if not self._check_code(code, 'set_position'):
-    #                 return
-    #             code = self._arm.set_position(*[43.6, 137.9, 350.1, -92.8, 87.5, 5.3], speed=self._tcp_speed,
-    #                                           mvacc=self._tcp_acc, radius=10.0, wait=False)
-    #             if not self._check_code(code, 'set_position'):
-    #                 return
-    #         # code = self._arm.set_position(*[165.1, 162.9, 362.5, -31.7, 86.6, 9.5], speed=self._tcp_speed,
-    #         #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
-    #         # if not self._check_code(code, 'set_position'):
-    #         #    return
-    #         code = self._arm.set_position(*self.position_icecream_with_topping, speed=self._tcp_speed,
-    #                                       mvacc=self._tcp_acc, radius=0.0, wait=True)
-    #         if not self._check_code(code, 'set_position'):
-    #             return
-    #     else:
-    #         # code = self._arm.set_servo_angle(angle=[45.8, -17.9, 33.5, 186.9, 41.8, -7.2], speed=self._angle_speed,
-    #         #                                 mvacc=self._angle_acc, wait=True, radius=0.0)
-    #         # if not self._check_code(code, 'set_servo_angle'):
-    #         #    return
-    #         code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
-    #         if not self._check_code(code, 'set_cgpio_digital'):
-    #             return
-    #         code = self._arm.set_servo_angle(angle=self.position_icecream_no_topping, speed=self._angle_speed,
-    #                                          mvacc=self._angle_acc, wait=True, radius=0.0)
-    #         if not self._check_code(code, 'set_servo_angle'):
-    #             return
-    #     try:
-    #         self.clientSocket.send('motion_topping_finish'.encode('utf-8'))
-    #     except:
-    #         print('socket error')
-
-    #     time.sleep(0.5)
-
-    # def motion_make_icecream(self):
-    #     try:
-    #         self.clientSocket.send('motion_make_icecream_start'.encode('utf-8'))
-    #     except:
-    #         print('socket error')
-    #     if self.order_msg['makeReq']['topping'] == '1':
-    #         time.sleep(5)
-    #     else:
-    #         time.sleep(8)
-    #     try:
-    #         self.clientSocket.send('motion_icecreaming_1'.encode('utf-8'))
-    #     except:
-    #         print('socket error')
-    #     time.sleep(4)
-    #     code = self._arm.set_position(z=-20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-    #                                   wait=True)
-    #     if not self._check_code(code, 'set_position'):
-    #         return
-    #     try:
-    #         self.clientSocket.send('motion_icecreaming_2'.encode('utf-8'))
-    #     except:
-    #         print('socket error')
-    #     time.sleep(4)
-    #     code = self._arm.set_position(z=-10, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-    #                                   wait=True)
-    #     if not self._check_code(code, 'set_position'):
-    #         return
-    #     if not self._check_code(code, 'set_pause_time'):
-    #         return
-    #     try:
-    #         self.clientSocket.send('motion_icecreaming_3'.encode('utf-8'))
-    #     except:
-    #         print('socket error')
-    #     code = self._arm.set_position(z=-50, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-    #                                   wait=True)
-    #     if not self._check_code(code, 'set_position'):
-    #         return
-    #     time.sleep(1)
-    #     code = self._arm.set_cgpio_digital(3, 0, delay_sec=0)
-    #     if not self._check_code(code, 'set_cgpio_digital'):
-    #         return
-    #     try:
-    #         self.clientSocket.send('motion_make_icecream_finish'.encode('utf-8'))
-    #     except:
-    #         print('socket error')
-    #     time.sleep(0.5)
+        try:
+            self.clientSocket.send('motion_icecreaming_2'.encode('utf-8'))
+        except:
+            print('socket error')
+        time.sleep(4)
+        code = self._arm.set_position(z=-10, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+                                      wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        if not self._check_code(code, 'set_pause_time'):
+            return
+        try:
+            self.clientSocket.send('motion_icecreaming_3'.encode('utf-8'))
+        except:
+            print('socket error')
+        code = self._arm.set_position(z=-50, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+                                      wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        time.sleep(1)
+        code = self._arm.set_cgpio_digital(3, 0, delay_sec=0)
+        if not self._check_code(code, 'set_cgpio_digital'):
+            return
+        try:
+            self.clientSocket.send('motion_make_icecream_finish'.encode('utf-8'))
+        except:
+            print('socket error')
+        time.sleep(0.5)
+    '''
 
     def motion_serve(self):
         try:
@@ -916,7 +1101,7 @@ class RobotMain(object):
                                          mvacc=self._angle_acc, wait=False, radius=20.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
-        code = self._arm.set_servo_angle(angle=[146.9, -12.7, 8.3, 91.0, 89.3, 22.1], speed=self._angle_speed,
+        code = self._arm.set_servo_angle(angle=[146.9, -12.7, 8.3, 91.0, 89.3, 22.1], seed=self._angle_speed,
                                          mvacc=self._angle_acc, wait=True, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
@@ -1052,6 +1237,7 @@ class RobotMain(object):
         self._tcp_speed = 100
         self._tcp_acc = 1000
 
+    ''' # def motion_trash_capsule(self):
     def motion_trash_capsule(self):
         try:
             self.clientSocket.send('motion_trash_start'.encode('utf-8'))
@@ -1162,6 +1348,7 @@ class RobotMain(object):
         except:
             print('socket error')
         time.sleep(0.5)
+    '''
 
     def motion_dance_a(self):  # designed 'poke'
         try:
@@ -1499,7 +1686,6 @@ class RobotMain(object):
     def motion_clean_mode(self):
         pass
 
-
     def pin_off(self):
         self.clientSocket.send('pin_off_start'.encode('utf-8'))
         # cup_dispenser_up
@@ -1613,7 +1799,6 @@ class RobotMain(object):
                             except:
                                 print('socket error')
                         self.order_msg['makeReq']['latency'] = 0
-                    print('sendsendsendsnedasdhfaenbeijakwlbrsvz;ikbanwzis;fklnairskjf')
                     self.state = 'ready'
 
                 elif self.state == 'test':
@@ -1755,7 +1940,7 @@ class RobotMain(object):
             time.sleep(10)
 
     
-#-----------------------------------------------Hi5------------------------------------------------
+#-----------------------------------------------Hi5-cam-----------------------------------------------
     def check_capsule_position(self):
         # 마커를 생성하는 데 사용된 딕셔너리를 로드합니다.
         aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
@@ -1830,7 +2015,7 @@ class RobotMain(object):
                     epsilon = 0.02 * cv2.arcLength(contour, True)
                     approx = cv2.approxPolyDP(contour, epsilon, True)
                     print(f"len(approx):",len(approx))
-                    if len(approx) <= 10:  # Assuming a star has approximately 10 points
+                    if len(approx) >= 8 and len(approx) <= 12:  # Assuming a star has approximately 10 points
                         return True, approx, edged, len(contours)
                 return False, None, edged, len(contours)
         def nothing(x):
@@ -1875,139 +2060,892 @@ class RobotMain(object):
             else:
                 cv2.putText(frame, "Star not detected", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
-                self.detect_sealing = 2
+                self.detect_sealing = 0
 
             if cv2.waitKey(1) & self.detect_sealing >= 1:
                 break
         # 캡처 객체와 모든 창을 해제 및 닫습니다.
         cap.release()
         cv2.destroyAllWindows()
-
-    def motion_grap_squeegee(self):
-        # 스퀴지 웨이포인트
-        code = self._arm.set_servo_angle(angle=[160.191895, 29.03074, 25.689881, 197.292459, 73.301699, 177.033703], speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=True, radius=0.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-        # 스퀴지 위치
-        code = self._arm.set_position(*[-274.5, 135.3, 148.5, 128, -86.5, -179.1], speed=20,
-                                        mvacc=self._tcp_acc, radius=0.0, wait=True)
-        if not self._check_code(code, 'set_position'):
-            return
-        # 스퀴지 잡고 올리기
-        code = self._arm.close_lite6_gripper()
-        if not self._check_code(code, 'close_lite6_gripper'):
-            return
-        time.sleep(2)
-        code = self._arm.set_position(z=20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-                                        wait=True)
-        if not self._check_code(code, 'set_position'):
-            return
-        code = self._arm.set_servo_angle(angle=[179.377616, -8.25065, 21.099343, 179.901127, 60.182169, -0.285619], speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=True, radius=0.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
         
 
-    def motion_Dondurma(self):
-        Dondurma_start_position = [0.0, -500, 285, 54.735632, 89.999981, -35.264406] #linear
-        Dondurma_end_position = [0.0, -180, 285, 54.735632, 89.999981, -35.264406] #linear
+    def hand_warning(self):
+        def nothing(x):
+            pass
+        cap = cv2.VideoCapture(2)
+        fgbg = cv2.createBackgroundSubtractorMOG2()
+        # ROI 영역 정의
+        roi_x = 52
+        roi_y = 0
+        roi_width = 500
+        roi_height = 310
+        # Mediapipe 손 감지 초기화
+        mp_hands = mp.solutions.hands
+        hands = mp_hands.Hands(max_num_hands=3, min_detection_confidence=0.3)
+        # 트랙바를 위한 윈도우 생성
+        cv2.namedWindow('Frame')
+        cv2.createTrackbar('Threshold', 'Frame', 0, 20000, nothing)  # 초기값 0, 최대값 20000
+        # 로봇팔 동작 제어 함수 (예시)
+        def control_robot_arm(action):
+            if action == "stop":
+                ### 여기다가 로봇팔 동작 멈추는 코드
+                arm.set_state(3)
+                print("Robot arm stopped.")
+            elif action == "start":
+                ### 여기다가 로봇팔이 동작하는 코드
+                arm.set_state(0)
+                print("Robot arm started.")
+        # 초기 상태를 로봇팔 동작 중으로 설정
+        robot_arm_active = True
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            # 트랙바에서 현재 threshold 값을 가져옴
+            threshold = cv2.getTrackbarPos('Threshold', 'Frame')
+            # 배경 차분을 사용하여 전경 마스크 생성
+            fgmask = fgbg.apply(frame)
+            # 특정 영역에 대한 침입 감지
+            roi = fgmask[roi_y:roi_y + roi_height, roi_x:roi_x + roi_width]
+            intrusion_detected = np.sum(roi) > threshold
+            # Mediapipe를 사용하여 손 감지
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            result = hands.process(frame_rgb)
+            hand_in_roi = False
+            if result.multi_hand_landmarks:
+                for hand_landmarks in result.multi_hand_landmarks:
+                    for landmark in hand_landmarks.landmark:
+                        # 손가락 랜드마크 좌표 계산
+                        x = int(landmark.x * frame.shape[1])
+                        y = int(landmark.y * frame.shape[0])
+                        # 손가락 랜드마크가 ROI 영역 내에 있는지 확인
+                        if roi_x < x < roi_x + roi_width and roi_y < y < roi_y + roi_height and intrusion_detected:
+                            hand_in_roi = True
+                            cv2.putText(frame, "Warning: Intrusion detected!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                            break
+                    # 손 랜드마크 그리기
+                    mp.solutions.drawing_utils.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            # 원본 프레임에 ROI 경계를 그립니다.
+            cv2.rectangle(frame, (roi_x, roi_y), (roi_x + roi_width, roi_y + roi_height), (255, 0, 0), 2)
+            # 손이 ROI에 있는지에 따라 로봇팔 제어
+            if hand_in_roi:
+                if robot_arm_active:
+                    control_robot_arm("stop")
+                    robot_arm_active = False
+            else:
+                if not robot_arm_active:
+                    control_robot_arm("start")
+                    robot_arm_active = True
+            # 감지된 마커가 있는 이미지를 표시합니다.
+            cv2.imshow('Frame', frame)
+            cv2.imshow('Foreground Mask', fgmask)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+        cap.release()
+        cv2.destroyAllWindows()
 
-        code = self._arm.set_position(*Dondurma_start_position, speed=50,
-                                            mvacc=5000, radius=0.0, wait=True)
-        if not self._check_code(code, 'set_position'):
-            return
 
-        Dondurma_count = random.randrange(1,5)
-        Dondurma_y_axis = 500
+    def tash_Cartesian(self):
 
-        for i in range(0,Dondurma_count):      
-            Dondurma_y_axis = Dondurma_y_axis-abs((Dondurma_start_position[1]-Dondurma_end_position[1])/Dondurma_count)
-            Dondurma_x_axis = random.randrange(-260,260)
-            Dondurma_z_axis = random.randrange(230,340)
+        # YOLOv8 모델 로드
+        model = YOLO('new_custom_m.pt')  # 모델 경로를 설정하세요.
 
-            print("{} / {}  y = {} x = {} z = {}" .format(i,Dondurma_count,Dondurma_y_axis,Dondurma_x_axis,Dondurma_z_axis))
+        # 모델을 GPU로 이동
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if torch.cuda.is_available():
+            model.to(device)
 
-            code = self._arm.set_position(*[Dondurma_x_axis, -Dondurma_y_axis, Dondurma_z_axis, Dondurma_end_position[3], Dondurma_end_position[4], Dondurma_end_position[5]], 
-                                        speed=450, mvacc=5000, radius=0.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return
+        # GPU 사용 여부 출력
+        print(f'Using device: {device}')
+
+        # 캘리브레이션 데이터를 사용하여 카메라 매트릭스와 왜곡 계수를 설정
+        camera_matrix = np.array([[474.51901407, 0, 302.47811758],
+                                [0, 474.18970657, 250.66191453],
+                                [0, 0, 1]])
+        dist_coeffs = np.array([[-0.06544764, -0.07654065, -0.00761827, -0.00279316, 0.08062307]])
+
+        # 1 픽셀당 1.55145mm 단위 변환 비율
+        pixel_to_mm_ratio = 1.55145
+
+        # 로봇 좌표계의 중앙값 (픽셀 단위)
+        robot_origin_x = 295
+        robot_origin_y = 184
+
+        # 비디오 캡처 초기화 (카메라 ID는 0으로 설정, 필요 시 변경 가능)
+        cap = cv2.VideoCapture(2)
+
+        # 트랙바 콜백 함수 (아무 동작도 하지 않음)
+        def nothing(x):
+            pass
+
+        # 트랙바를 위한 윈도우 생성
+        cv2.namedWindow('Detection Results')
+        cv2.createTrackbar('Confidence', 'Detection Results', 50, 100, nothing)  # 기본값 50, 범위 0-100
+
+        # 객체 좌표를 저장할 딕셔너리
+        object_coords = {}
+
+        # 유사한 객체를 인식할 때 사용할 거리 임계값
+        similarity_threshold = 50
+
+        # 제어 모드 플래그
+        control_mode = False
+
+        def find_similar_object(center_x, center_y, label, object_coords, threshold):
+            for obj_id, coords in object_coords.items():
+                if obj_id.startswith(label) and coords:
+                    avg_x = sum([coord[0] for coord in coords]) / len(coords)
+                    avg_y = sum([coord[1] for coord in coords]) / len(coords)
+                    distance = np.sqrt((avg_x - center_x) ** 2 + (avg_y - center_y) ** 2)
+                    if distance < threshold:
+                        return obj_id
+            return None
+
+        while True:
+            # 트랙바에서 현재 Confidence 값 가져오기
+            confidence_threshold = cv2.getTrackbarPos('Confidence', 'Detection Results') / 100.0
+
+            # 프레임 캡처
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # 왜곡 보정
+            undistorted_frame = cv2.undistort(frame, camera_matrix, dist_coeffs)
+
+            if not control_mode:
+                # 객체 검출 수행
+                results = model(undistorted_frame, conf=confidence_threshold)
+                
+                # 바운딩 박스 그리기
+                for result in results:
+                    boxes = result.boxes
+                    for box in boxes:
+                        cls_id = int(box.cls)
+                        label = model.names[cls_id]
+                        confidence = box.conf.item()  # 신뢰도 추출
+
+                        # 'cup' 및 'star' 객체만 추적
+                        if label in ['cup', 'star'] and confidence >= confidence_threshold:
+                            bbox = box.xyxy[0].tolist()  # 바운딩 박스를 리스트로 변환
+                            x1, y1, x2, y2 = map(int, bbox)
+                            center_x = (x1 + x2) / 2
+                            center_y = (y1 + y2) / 2
+
+                            cv2.rectangle(undistorted_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+                            # 텍스트 위치 계산
+                            text = f'{label} {confidence:.2f}'
+                            (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+
+                            # 텍스트가 바운딩 박스 내부, 오른쪽 상단에 표시되도록 위치 조정
+                            text_x = x2 - text_width if x2 - text_width > 0 else x1
+                            text_y = y1 - 2 if y1 - 2 > text_height else y1 + text_height + 2
+
+                            # 텍스트 배경 상자 그리기
+                            cv2.rectangle(undistorted_frame, (text_x, text_y - text_height - baseline), (text_x + text_width, text_y + baseline), (0, 255, 0), cv2.FILLED)
+
+                            # 텍스트 그리기
+                            cv2.putText(undistorted_frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+
+                            # 유사한 객체 찾기
+                            similar_object_id = find_similar_object(center_x, center_y, label, object_coords, similarity_threshold)
+                            
+                            if similar_object_id:
+                                object_id = similar_object_id
+                            else:
+                                object_id = f'{label}_{len(object_coords)}'
+                                object_coords[object_id] = []
+                                print(f"새 객체 발견: {object_id}")
+
+                            # 좌표 추가, 20개까지만 저장
+                            if len(object_coords[object_id]) < 20:
+                                object_coords[object_id].append((center_x, center_y))
+                                print(f"{object_id}의 좌표 추가됨: ({center_x}, {center_y})")
+                                print(f"{object_id}의 좌표 개수: {len(object_coords[object_id])}")
+
+                # 모든 객체가 20개의 좌표를 수집하면 제어 모드로 전환
+                if all(len(coords) >= 20 for coords in object_coords.values()):
+                    control_mode = True
+                    print("제어 모드로 전환")
+
+            else:
+                # 모든 객체의 평균 좌표 계산
+                avg_coords = {}
+                for object_id, coords in object_coords.items():
+                    avg_x = sum([coord[0] for coord in coords]) / 20
+                    avg_y = sum([coord[1] for coord in coords]) / 20
+                    avg_coords[object_id] = (avg_x, avg_y)
+
+                # 카메라 화면의 중심 좌표
+                center_x_cam, center_y_cam = 320, 240
+
+                # 객체들을 중심으로부터의 거리 순으로 정렬 (가장 먼 객체부터)
+                sorted_objects = sorted(avg_coords.items(), key=lambda item: np.sqrt((item[1][0] - center_x_cam) ** 2 + (item[1][1] - center_y_cam) ** 2), reverse=True)
+
+                # 모든 객체 ID와 거리 순서대로 번호 표시
+                for idx, (object_id, (avg_x, avg_y)) in enumerate(sorted_objects, start=1):
+                    distance = np.sqrt((avg_x - center_x_cam) ** 2 + (avg_y - center_y_cam) ** 2)
+                    display_text = f'{idx}. {object_id} ({distance:.2f} px)'
+                    cv2.putText(undistorted_frame, display_text, (10, 30 + 30 * idx), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+
+                # 가장 먼 객체부터 순차적으로 제어
+                for object_id, (avg_x, avg_y) in sorted_objects:
+                    print(f"{object_id}의 평균 좌표 계산됨: ({avg_x:.2f}, {avg_y:.2f})")
+
+                    # 중심으로부터의 거리 계산
+                    distance = np.sqrt((avg_x - center_x_cam) ** 2 + (avg_y - center_y_cam) ** 2)
+                    print(f"{object_id}의 중심으로부터 거리 계산됨: {distance:.2f} 픽셀")
+
+                    # 픽셀 좌표를 MM 좌표로 변환
+                    robot_coords_mm_x = (avg_x - robot_origin_x) * pixel_to_mm_ratio * -1
+                    robot_coords_mm_y = (avg_y - robot_origin_y) * pixel_to_mm_ratio
+                    print(f"{object_id}의 로봇 좌표 계산됨: ({robot_coords_mm_x:.2f} mm, {robot_coords_mm_y:.2f} mm)")
+
+                    # 로봇 제어 코드 실행
+                    print(f"로봇 제어 코드 실행: {object_id}")
+
+
+                    self.xy = [robot_coords_mm_x, robot_coords_mm_y]
+
+                    code = self._arm.open_lite6_gripper()
+                    if not self._check_code(code, 'open_lite6_gripper'):
+                        return
+                    time.sleep(2)
+
+                    code = self._arm.set_position(*[self.xy[0], self.xy[1], 400, -179.999963, -0.544826, 88.453969], speed=20,
+                                            mvacc=100, radius=0.0, wait=True)
+                    if not self._check_code(code, 'set_position'):
+                        return
+
+                    code = self._arm.set_position(*[self.xy[0], self.xy[1], 250, -179.999963, -0.544826, 88.453969], speed=20,
+                                                    mvacc=100, radius=0.0, wait=True)
+                    if not self._check_code(code, 'set_position'):
+                        return
+                    
+                    code = self._arm.close_lite6_gripper()
+                    if not self._check_code(code, 'close_lite6_gripper'):
+                        return
+                    time.sleep(2)
+
+                    code = self._arm.set_position(*[self.xy[0], self.xy[1], 400, -179.999963, -0.544826, 88.453969], speed=20,
+                                                    mvacc=100, radius=0.0, wait=True)
+                    if not self._check_code(code, 'set_position'):
+                        return
+
+
+                    # 여기에 로봇 제어 코드를 추가하세요
+
+
+
+                # 모든 객체의 제어가 완료되면 객체 리스트 초기화 및 인식 모드로 전환
+                object_coords.clear()
+                control_mode = False
+                print("모든 객체 제어 완료. 인식 모드로 전환.")
+
+            # 결과가 포함된 이미지 표시
+            cv2.imshow('Detection Results', undistorted_frame)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+        
+    def Dondurma_hand(self):
+        self.dondurma_detected = False
+        # Initialize webcam
+        cap = cv2.VideoCapture(2)
+        # Initialize HandDetector
+        detector = HandDetector(maxHands=5, detectionCon=0.8)  # 최대 5개의 손을 인식
+
+        # 임계값 설정 (이 값을 조정하여 손이 너무 가까워졌을 때를 결정)
+        AREA_THRESHOLD = 100000  # 예시 값, 실제 상황에 맞게 조정 필요
+
+        # 손 ID 저장
+        tracked_hand_bbox = None
+
+        while self.dondurma_someone:
+            success, img = cap.read()
+            if not success:
+                break
+
+            # Find hands
+            hands, img = detector.findHands(img)
+
+            if hands:
+                # 인식된 손들을 면적 기준으로 정렬
+                hands.sort(key=lambda x: x['bbox'][2] * x['bbox'][3], reverse=True)
+                # print('hand:', hands)
+
+                # 손마다 바운딩 박스를 표시
+                for hand in hands:
+                    x, y, w, h = hand['bbox']
+                    cvzone.putTextRect(img, f'Area: {w * h}', (x, y - 10), scale=1, thickness=2, colorR=(255, 0, 0))
+                    cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+                if tracked_hand_bbox is None:
+                    # 면적이 가장 큰 손의 바운딩 박스를 저장
+                    tracked_hand_bbox = hands[0]['bbox']
+                
+                # 추적 중인 손을 찾기
+                hand_to_track = None
+                for hand in hands:
+                    if hand['bbox'] == tracked_hand_bbox:
+                        hand_to_track = hand
+                        break
+                
+                if hand_to_track:
+                    # Get the bounding box of the tracked hand
+                    x, y, w, h = hand_to_track['bbox']
+                    # Calculate the area of the bounding box
+                    area = w * h
+
+                    # 면적이 임계값을 초과하면 경고 메시지 표시
+                    if area > AREA_THRESHOLD:
+                        cvzone.putTextRect(img, "Oops! Too close, trying to steal the ice cream?", (50, 50), scale=1, thickness=2, colorR=(0, 0, 255))
+                        # 여기서 로봇을 제어하는 코드를 추가할 수 있습니다.
+                        # 예: 로봇을 n 차 뒤로 이동시키는 코드
+                        # move_robot_backward(n)
+                        self.dondurma_detected = True
+
+                    # Display the area on the image
+                    cvzone.putTextRect(img, f'Tracked Area: {int(area)}', (50, 100), scale=2, thickness=2, colorR=(255, 0, 0))
+                    
+                    # 추적 중인 손을 강조 표시
+                    cv2.rectangle(img, (x, y), (x + w, y + h), (0, 0, 255), 4)  # 빨간색 두꺼운 사각형
+                    cvzone.putTextRect(img, 'Tracking', (x, y - 50), scale=2, thickness=2, colorR=(0, 0, 255))
+                    
+                else:
+                    # 추적 중인 손을 찾을 수 없는 경우, 초기화
+                    tracked_hand_bbox = None
+            else:
+                # 손이 없으면 ID 초기화
+                tracked_hand_bbox = None
+
+            # Display the image
+            cv2.imshow("Dondurma_hand", img)
+
+            # Break the loop on 'q' key press
+            if cv2.waitKey(1) & self.dondurma_detected == True:
+                cap.release()
+                cv2.destroyAllWindows()
+                break
+                
+
+        # Release the webcam and destroy all windows
+        
+
+
+    def vision(self):
+        def detect_star_shape(image, canny_thresh1, canny_thresh2):
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+            edged = cv2.Canny(blurred, canny_thresh1, canny_thresh2)
+            contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            # print(f"len(contours):",len(contours))
+            if len(contours) == 1 or len(contours) == 2:
+                contour = contours[0]
+                epsilon = 0.02 * cv2.arcLength(contour, True)
+                approx = cv2.approxPolyDP(contour, epsilon, True)
+                # print(f"len(approx):",len(approx))
+                if len(approx) >= 8 and len(approx) <= 12:  # Assuming a star has approximately 10 points
+                    return True, approx, edged, len(contours)
+            return False, None, edged, len(contours)
+
+        def nothing(x):
+            pass
+
+        def control_robot_arm(action):
+            if action == "stop":
+                ### 여기다가 로봇팔 동작 멈추는 코드
+                arm.set_state(3)
+                print("Robot arm stopped.")
+            elif action == "start":
+                ### 여기다가 로봇팔이 동작하는 코드
+                arm.set_state(0)
+                print("Robot arm started.")
+        # 초기 상태를 로봇팔 동작 중으로 설정
+
+        cap = cv2.VideoCapture(2)
+
+        # YOLOv8 model
+        model = YOLO('new_custom_m_freeze8.pt')
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if torch.cuda.is_available():
+            model.to(device)
+        print(f'Using device: {device}')
+
+        # Mediapipe hand detection
+        mp_hands = mp.solutions.hands
+        hands = mp_hands.Hands(max_num_hands=2, min_detection_confidence=0.7)
+
+        # ArUco marker detection
+        aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
+        parameters = aruco.DetectorParameters()
+        last_seen = {}
+
+        # Trackbars for thresholds and brightness
+        cv2.namedWindow('Frame')
+        cv2.createTrackbar('Threshold', 'Frame', 0, 20000, nothing)
+        cv2.createTrackbar('Canny Thresh1', 'Frame', 50, 255, nothing)
+        cv2.createTrackbar('Canny Thresh2', 'Frame', 112, 255, nothing)
+        cv2.createTrackbar('Brightness', 'Frame', 50, 100, nothing)
+        cv2.createTrackbar('Confidence', 'Frame', 50, 100, nothing)
+
+        # Trackbars for trash detection
+        cv2.createTrackbar('Diff_Thresh', 'Frame', 45, 255, nothing)
+        cv2.createTrackbar('Hue Min', 'Frame', 0, 179, nothing)
+        cv2.createTrackbar('Hue Max', 'Frame', 179, 179, nothing)
+        cv2.createTrackbar('Sat Min', 'Frame', 0, 255, nothing)
+        cv2.createTrackbar('Sat Max', 'Frame', 255, 255, nothing)
+        cv2.createTrackbar('Val Min', 'Frame', 0, 255, nothing)
+        cv2.createTrackbar('Val Max', 'Frame', 255, 255, nothing)
+
+        # ROI definitions
+        roi_x_large = 52
+        roi_y_large = 0
+        roi_width_large = 500
+        roi_height_large = 310
+
+        roi_x_medium = 270
+        roi_y_medium = 0
+        roi_width_medium = 270
+        roi_height_medium = 60
+
+        roi_x_small = 464
+        roi_y_small = 118
+        roi_width_small = 35
+        roi_height_small = 35
+
+        fgbg = cv2.createBackgroundSubtractorMOG2()
+
+        # 초기 배경 이미지 변수
+        initial_gray = None
+        post_cleanup_gray = None
+        detection_enabled = False
+        cleanup_detection_enabled = False
+        yolo_detection_enabled = False  # New variable to control YOLO detection
+        robot_arm_active = True
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("Failed to capture frame from camera.")
+                break
             
-        code = self._arm.set_position(*Dondurma_end_position,
-                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+            # Trackbar values
+            threshold = cv2.getTrackbarPos('Threshold', 'Frame')
+            canny_thresh1 = cv2.getTrackbarPos('Canny Thresh1', 'Frame')
+            canny_thresh2 = cv2.getTrackbarPos('Canny Thresh2', 'Frame')
+            brightness = cv2.getTrackbarPos('Brightness', 'Frame')
+            confidence_threshold = cv2.getTrackbarPos('Confidence', 'Frame') / 100.0
+            
+            # Trackbar values for trash detection
+            diff_thresh = cv2.getTrackbarPos('Diff_Thresh', 'Frame')
+            h_min = cv2.getTrackbarPos('Hue Min', 'Frame')
+            h_max = cv2.getTrackbarPos('Hue Max', 'Frame')
+            s_min = cv2.getTrackbarPos('Sat Min', 'Frame')
+            s_max = cv2.getTrackbarPos('Sat Max', 'Frame')
+            v_min = cv2.getTrackbarPos('Val Min', 'Frame')
+            v_max = cv2.getTrackbarPos('Val Max', 'Frame')
+            
+            frame = cv2.convertScaleAbs(frame, alpha=1, beta=(brightness - 50) * 2)
+            
+            fgmask = fgbg.apply(frame)
+            
+            # Intrusion detection
+            roi_large = fgmask[roi_y_large:roi_y_large + roi_height_large, roi_x_large:roi_x_large + roi_width_large]
+            intrusion_detected = np.sum(roi_large) > threshold
+            
+            warning_detected = False  # Initialize warning detected flag
+            trash_detected = False  # Initialize trash detection flag
+
+            # Mediapipe hand detection
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            result = hands.process(frame_rgb)
+            hand_in_roi = False
+            if result.multi_hand_landmarks:
+                for hand_landmarks in result.multi_hand_landmarks:
+                    for landmark in hand_landmarks.landmark:
+                        x = int(landmark.x * frame.shape[1])
+                        y = int(landmark.y * frame.shape[0])
+                        if roi_x_large < x < roi_x_large + roi_width_large and roi_y_large < y < roi_y_large + roi_height_large and intrusion_detected:
+                            warning_detected = True
+                            hand_in_roi = True
+                            cv2.putText(frame, "Warning: Intrusion detected!", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                            break
+
+
+                    # 손 랜드마크 그리기
+                    mp.solutions.drawing_utils.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            
+            if hand_in_roi:
+                if robot_arm_active:
+                    control_robot_arm("stop")
+                    robot_arm_active = False
+            else:
+                if not robot_arm_active:
+                    control_robot_arm("start")
+                    robot_arm_active = True
+
+            # ArUco marker detection
+            roi_medium = frame[roi_y_medium:roi_y_medium + roi_height_medium, roi_x_medium:roi_x_medium + roi_width_medium]
+            corners, ids, rejectedImgPoints = aruco.detectMarkers(roi_medium, aruco_dict, parameters=parameters)
+            current_time = time.time()
+            if ids is not None and len(ids) > 0:
+                aruco.drawDetectedMarkers(roi_medium, corners, ids)
+                for id in ids.flatten():
+                    last_seen[id] = current_time
+                for id, last_time in list(last_seen.items()):
+                    if current_time - last_time > 3:
+                        cv2.putText(frame, f"Action executed for marker ID {id}", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                        
+                        if id == 0:
+                            self.capsule_position = 1
+                        elif id == 1:
+                            self.capsule_position = 2
+                        
+                        del last_seen[id]
+                        break
+            
+            # Star shape detection
+            small_roi = frame[roi_y_small:roi_y_small + roi_height_small, roi_x_small:roi_x_small + roi_width_small]
+            star_detected, star_contour, edged, contour_count = detect_star_shape(small_roi, canny_thresh1, canny_thresh2)
+            if star_detected:
+                star_contour += [roi_x_small, roi_y_small]
+                cv2.drawContours(frame, [star_contour], -1, (0, 255, 0), 3)
+                cv2.putText(frame, "Star detected", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+            
+                self.detect_sealing = 1
+            else:
+                cv2.putText(frame, "Star not detected", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
+            
+                self.detect_sealing = 0
+            # Trash detection
+            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            frame_gray = cv2.GaussianBlur(frame_gray, (21, 21), 0)
+            hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            
+            # 초기값 설정 또는 해제
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('s'):
+                initial_gray = frame_gray
+                detection_enabled = True
+                yolo_detection_enabled = True  # Enable YOLO detection as well
+                print("Initial background set, detection enabled.")
+            
+            # 검출 활성화된 경우에만 실행
+            if detection_enabled and initial_gray is not None and not cleanup_detection_enabled:
+                # 초기 이미지와 현재 이미지의 차이 계산
+                frame_delta = cv2.absdiff(initial_gray, frame_gray)
+                
+                # 차이 이미지의 임계값 적용
+                _, diff_mask = cv2.threshold(frame_delta, diff_thresh, 255, cv2.THRESH_BINARY)
+                diff_mask = cv2.dilate(diff_mask, None, iterations=2)
+                
+                # Canny 엣지 검출
+                edges = cv2.Canny(frame_gray, canny_thresh1, canny_thresh2)
+                edges = cv2.dilate(edges, None, iterations=1)
+                edges = cv2.bitwise_and(edges, edges, mask=diff_mask)
+                
+                # HSV 색상 범위에 따른 마스크 생성
+                lower_bound = np.array([h_min, s_min, v_min])
+                upper_bound = np.array([h_max, s_max, v_max])
+                hsv_mask = cv2.inRange(hsv_frame, lower_bound, upper_bound)
+                
+                # 탐지 영역 마스크 생성 (마커와 별 인식 영역 제외)
+                detection_mask = np.zeros(diff_mask.shape, dtype=np.uint8)
+                detection_mask[roi_y_large:roi_y_large + roi_height_large, roi_x_large:roi_x_large + roi_width_large] = 255
+                detection_mask[roi_y_medium:roi_y_medium + roi_height_medium, roi_x_medium:roi_x_medium + roi_width_medium] = 0
+                detection_mask[roi_y_small:roi_y_small + roi_height_small, roi_x_small:roi_x_small + roi_width_small] = 0
+                
+                # 최종 마스크 적용
+                combined_mask = cv2.bitwise_or(diff_mask, edges)
+                combined_mask = cv2.bitwise_and(combined_mask, combined_mask, mask=detection_mask)
+                combined_mask = cv2.bitwise_and(combined_mask, hsv_mask)
+                
+                # 윤곽선 검출
+                contours, _ = cv2.findContours(combined_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                
+                detected_objects = []
+                
+                for cnt in contours:
+                    if cv2.contourArea(cnt) > 80:  # 최소 면적 기준
+                        x, y, w, h = cv2.boundingRect(cnt)
+                        # 탐지된 객체가 지정된 탐지 영역 내에 있는지 확인
+                        if (roi_x_large <= x <= roi_x_large + roi_width_large and
+                            roi_y_large <= y <= roi_y_large + roi_height_large):
+                            detected_objects.append((x, y, w, h))
+                            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+                            trash_detected = True  # Set trash detected flag
+            
+            # YOLOv8 object detection within the large ROI
+            if yolo_detection_enabled:
+                yolo_roi = frame[roi_y_large:roi_y_large + roi_height_large, roi_x_large:roi_x_large + roi_width_large]
+                results = model(yolo_roi)
+                for result in results:
+                    boxes = result.boxes
+                    for box in boxes:
+                        cls_id = int(box.cls)
+                        label = model.names[cls_id]
+                        confidence = box.conf.item()
+                        if confidence >= confidence_threshold:
+                            bbox = box.xyxy[0].tolist()
+                            x1, y1, x2, y2 = map(int, bbox)
+                            x1 += roi_x_large
+                            y1 += roi_y_large
+                            x2 += roi_x_large
+                            y2 += roi_y_large
+                            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                            if label == 'cup' or label == 'star':
+                                text = f'{label}'
+                                text_x = x1
+                                text_y = y1 - 10 if y1 - 10 > 10 else y1 + 10
+                                cv2.putText(frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                            trash_detected = True  # Set trash detected flag
+            
+            # Draw ROI rectangles
+            cv2.rectangle(frame, (roi_x_large, roi_y_large), (roi_x_large + roi_width_large, roi_y_large + roi_height_large), (255, 0, 0), 2)
+            cv2.rectangle(frame, (roi_x_medium, roi_y_medium), (roi_x_medium + roi_width_medium, roi_y_medium + roi_height_medium), (0, 255, 0), 2)
+            cv2.rectangle(frame, (roi_x_small, roi_y_small), (roi_x_small + roi_width_small, roi_y_small + roi_height_small), (0, 0, 255), 2)
+            cv2.putText(frame, f"Contours: {contour_count}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 255), 2)
+            
+            # Display the edged image in the small ROI
+            frame[roi_y_small:roi_y_small + roi_height_small, roi_x_small:roi_x_small + roi_width_small] = cv2.cvtColor(edged, cv2.COLOR_GRAY2BGR)
+            
+            # Display "Warning Detected" message if a hand is detected
+            if warning_detected:
+                cv2.putText(frame, 'WARNING DETECTED!', (10, frame.shape[0] - 60), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 3)
+
+            # Display "Trash Detected" message
+            if trash_detected:
+                cv2.putText(frame, 'TRASH DETECTED', (10, frame.shape[0] - 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 0), 2)
+
+            cv2.imshow('Frame', frame)
+            if key == ord('q'):
+                break
+
+        cap.release()
+        cv2.destroyAllWindows()
+    
+#-----------------------------------------------Hi5-motion-----------------------------------------------
+    def motion_home(self):
+        self.capsule_position = 0 
+        self.detect_sealing = 0
+
+        code = self._arm.set_cgpio_analog(0, 0)
+        if not self._check_code(code, 'set_cgpio_analog'):
+            return
+        code = self._arm.set_cgpio_analog(1, 0)
+        if not self._check_code(code, 'set_cgpio_analog'):
+            return
+
+        # press_up
+        code = self._arm.set_cgpio_digital(3, 0, delay_sec=0)
+        if not self._check_code(code, 'set_cgpio_digital'):
+            return
+
+        # Joint Motion
+        # self._angle_speed = 80
+        # self._angle_acc = 200
+
+        self._angle_speed = 20
+        self._angle_acc = 200
+        try:
+            self.clientSocket.send('motion_home_start'.encode('utf-8'))
+        except:
+            print('socket error')
+        print('motion_home start')
+
+        code = self._arm.set_servo_angle(angle=self.position_home, speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        time.sleep(1)
+
+        code = self._arm.stop_lite6_gripper()
+        if not self._check_code(code, 'stop_lite6_gripper'):
+            return
+        time.sleep(0.5)
+        
+        self.motion_num = 0
+        print('motion_home finish')
+        
+
+    def motion_grab_capsule(self):
+        print('motion_grab_capsule start')
+        # 컵 추출 준비
+        code = self._arm.set_cgpio_analog(0, 5)
+        if not self._check_code(code, 'set_cgpio_analog'):
+            return
+        code = self._arm.set_cgpio_analog(1, 5)
+        if not self._check_code(code, 'set_cgpio_analog'):
+            return
+        
+        # Joint Motion
+        # self._angle_speed = 100
+        # self._angle_acc = 100
+
+        # self._tcp_speed = 100
+        # self._tcp_acc = 1000
+
+        code = self._arm.stop_lite6_gripper()
+        if not self._check_code(code, 'stop_lite6_gripper'):
+            return
+        time.sleep(0.5)
+
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        time.sleep(1)
+
+        # self.check_capsule_position()
+        # self.capsule_position = 1
+
+        print(self.capsule_position)
+        while True:
+            if self.capsule_position == 1:
+                self.return_capsule_position = self.capsule_position
+                # 지그 가는 웨이포인트
+                code = self._arm.set_servo_angle(angle=[176, 27, 29.9, 76.8, 92, 0], speed=100,
+                                                    mvacc=100, wait=False, radius=0.0)
+                if not self._check_code(code, 'set_servo_angle'):
+                    return
+                # 지그A 가는 웨이포인트
+                code = self._arm.set_servo_angle(angle=[179.5, 28.3, 31.4, 113.1, 91.5, 0], speed=100,
+                                                    mvacc=100, wait=False, radius=20.0)
+                if not self._check_code(code, 'set_servo_angle'):
+                    return
+
+                code = self._arm.set_position(*self.position_jig_A_grab, speed=30,
+                                                mvacc=100, radius=0.0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+                break
+
+            elif self.capsule_position == 2:
+                self.return_capsule_position = self.capsule_position
+                print("들어옴")
+                # 지그 가는 웨이포인트
+                code = self._arm.set_servo_angle(angle=[176, 27, 29.9, 76.8, 92, 0], speed=100,
+                                                    mvacc=100, wait=False, radius=0.0)
+                if not self._check_code(code, 'set_servo_angle'):
+                    return
+                print("지그 가는 웨이포인트")
+                # 지그B 캡슐 그랩
+                code = self._arm.set_position(*self.position_jig_B_grab, speed=30,
+                                                mvacc=100, radius=0.0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return 
+                
+
+                print("지그B 캡슐 그랩")
+                break
+
+            # elif self.capsule_position == 3:
+            #     self.return_capsule_position = 3
+            #     # 지그 가는 웨이포인트
+            #     code = self._arm.set_servo_angle(angle=[176, 27, 29.9, 76.8, 92, 0], speed=self._angle_speed,
+            #                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+            #     if not self._check_code(code, 'set_servo_angle'):
+            #         return
+            #     # 지그C 잡으러가는 웨이포인트
+            #     code = self._arm.set_servo_angle(angle=[182.6, 25.3, 27.2, 55.7, 91.5, 0], speed=self._angle_speed,
+            #                                         mvacc=self._angle_acc, wait=False, radius=20.0)
+            #     if not self._check_code(code, 'set_servo_angle'):
+            #         return
+
+            #     code = self._arm.set_position(*self.position_jig_C_grab, speed=self._tcp_speed,
+            #                                     mvacc=self._tcp_acc, radius=0.0, wait=True)
+            #     if not self._check_code(code, 'set_position'):
+            #         return
+            #     break
+
+        code = self._arm.close_lite6_gripper()
+        if not self._check_code(code, 'close_lite6_gri1pper'):
+            return
+        time.sleep(1)
+
+        code = self._arm.set_position(z=100, radius=0, speed=100, mvacc=1000, relative=True,
+                                        wait=False)
         if not self._check_code(code, 'set_position'):
             return
         
-        # print(Dondurma_count)
-        # print(Dondurma_start_position[1] - Dondurma_end_position[1])
-        # print(abs((Dondurma_start_position[1]-Dondurma_end_position[1])/Dondurma_count))
-
-        # code = self._arm.set_position(y=abs((Dondurma_start_position[1]-Dondurma_end_position[1])/Dondurma_count), radius=0, speed=10, mvacc=50, relative=True, wait=False)
-        # if not self._check_code(code, 'set_position'):
-        #     return
+        #실링체크 웨이포인트
+        code = self._arm.set_servo_angle(angle=[145, -27, 13.4, 95.7, 80.1, 156.4], speed=100,
+                                            mvacc=100, wait=False, radius=30.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
         
+        self.motion_num = 1
+        print('motion_grab_capsule finish')
+    
+    def motion_check_sealing(self):
+        print('motion_check_sealing check')
+        # self._angle_speed = 100
+        # self._angle_acc = 200
+        self._angle_speed = 20
+        self._angle_acc = 200
+
+        code = self._arm.set_servo_angle(angle=[179.1, -85.6, 13.1, 182.6, -3.2, 180], speed=100,
+                                            mvacc=100, wait=True, radius=30.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        self.motion_num = 2
+        print('motion_check_sealing finish')
+
+
     def motion_place_capsule(self):
+        angle_speed = 100
+        angle_acc = 100
+        tcp_speed = 50
+        tcp_acc = 100
         try:
             self.clientSocket.send('motion_place_capsule_start'.encode('utf-8'))
         except:
             print('socket error')
 
         #토핑 아래로 지나가는 1
-        code = self._arm.set_servo_angle(angle=[81.0, -10.8, 6.9, 103.6, 88.6, 9.6], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=40.0)
+        code = self._arm.set_servo_angle(angle=[81.0, -10.8, 6.9, 103.6, 88.6, 9.6], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=40.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
 
         #토핑 아래로 지나가는 2
-        code = self._arm.set_servo_angle(angle=[10, -20.8, 7.1, 106.7, 79.9, 26.0], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=50.0)
+        code = self._arm.set_servo_angle(angle=[10, -20.8, 7.1, 106.7, 79.9, 26.0], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=50.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
-        # code = self._arm.set_servo_angle(angle=[27.0, -24.9, 7.2, 108.0, 76.4, 32.7], speed=self._angle_speed,
-        #                                 mvacc=self._angle_acc, wait=False, radius=40.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #    return
-        # code = self._arm.set_servo_angle(angle=[-0.9, -24.9, 10.4, 138.3, 66.0, 19.1], speed=self._angle_speed,
-        #                                 mvacc=self._angle_acc, wait=False, radius=40.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #    return
 
         #토핑 아래로 지나 올라옴
-        code = self._arm.set_servo_angle(angle=[8.4, -42.7, 23.7, 177.4, 31.6, 3.6], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=40.0)
+        code = self._arm.set_servo_angle(angle=[8.4, -42.7, 23.7, 177.4, 31.6, 3.6], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=40.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
-        # code = self._arm.set_servo_angle(angle=[8.4, -33.1, 51.8, 100.6, 29.8, 77.3], speed=self._angle_speed,
-        #                                 mvacc=self._angle_acc, wait=True, radius=0.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #    return
 
         #탬핑기 바로 앞
-        code = self._arm.set_servo_angle(angle=[8.4, -32.1, 55.1, 96.6, 29.5, 81.9], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[8.4, -32.1, 55.1, 96.6, 29.5, 81.9], speed=angle_speed,
+                                         mvacc=angle_acc, wait=True, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
-        # code = self._arm.set_position(*[241.7, 122.5, 487.8, -140, 86.1, -52.4], speed=self._tcp_speed,
-        #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #    return
-        # code = self._arm.set_position(*[241.7, 122.5, 467.8, -140, 86.1, -52.4], speed=self._tcp_speed,
-        #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #    return
-        # code = self._arm.set_position(*[234.9, 135.9, 486.5, 133.6, 87.2, -142.1], speed=self._tcp_speed,
-        #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #    return
 
         #캡슐 삽입
-        code = self._arm.set_position(*self.position_before_capsule_place, speed=self._tcp_speed,
-                                      mvacc=self._tcp_acc, radius=0.0, wait=True)
+        code = self._arm.set_position(*self.position_before_capsule_place, speed=tcp_speed,
+                                      mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
+        
         #캡슐 내려놓음
-        code = self._arm.set_position(*self.position_capsule_place, speed=self._tcp_speed,
-                                      mvacc=self._tcp_acc, radius=0.0, wait=True)
+        code = self._arm.set_position(*self.position_capsule_place, speed=tcp_speed,
+                                      mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
@@ -2028,8 +2966,8 @@ class RobotMain(object):
             return
 
         # 뒤로빠진 모션
-        code = self._arm.set_position(*[233.4, 10.3, 471.1, -172.2, 87.3, -84.5], speed=self._tcp_speed,
-                                      mvacc=self._tcp_acc, radius=20.0, wait=False)
+        code = self._arm.set_position(*[233.4, 10.3, 471.1, -172.2, 87.3, -84.5], speed=tcp_speed,
+                                      mvacc=tcp_acc, radius=20.0, wait=False)
         if not self._check_code(code, 'set_position'):
             return
 
@@ -2038,6 +2976,66 @@ class RobotMain(object):
         except:
             print('socket error')
         time.sleep(0.5)
+        self.motion_num = 3
+
+
+    def motion_place_fail_capsule(self):
+        code = self._arm.set_servo_angle(angle=[176, -2, 30.7, 79.5, 98.2, 29.3], speed=self._angle_speed,
+                                        mvacc=self._angle_acc, wait=False, radius=20.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        if self.return_capsule_position == 1:
+            code = self._arm.set_position(*[-255.2, -133.8, 250, 68.3, 86.1, -47.0], speed=self._tcp_speed,
+                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            if not self._check_code(code, 'set_position'):
+                return
+
+            code = self._arm.set_position(*self.position_jig_A_grab, speed=self._tcp_speed,
+                                            mvacc=self._tcp_acc, radius=20.0, wait=True)
+            if not self._check_code(code, 'set_position'):
+                return
+
+        elif self.return_capsule_position == 2:
+            code = self._arm.set_position(*[-152.3, -127.0, 250, 4.8, 89.0, -90.7], speed=self._tcp_speed,
+                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            if not self._check_code(code, 'set_position'):
+                return
+
+            code = self._arm.set_position(*self.position_jig_B_grab, speed=self._tcp_speed-50,
+                                            mvacc=self._tcp_acc, radius=0.0, wait=True)
+            if not self._check_code(code, 'set_position'):
+                return
+
+        # elif self.return_capsule_position == 3:
+        #     code = self._arm.set_position(*[-76.6, -144.6, 250, 5.7, 88.9, -50.1], speed=self._tcp_speed,
+        #                                     mvacc=self._tcp_acc, radius=20.0, wait=False)
+        #     if not self._check_code(code, 'set_position'):
+        #         return
+        #     code = self._arm.set_position(*self.position_jig_C_grab, speed=self._tcp_speed,
+        #                                     mvacc=self._tcp_acc, radius=0.0, wait=True)
+        #     if not self._check_code(code, 'set_position'):
+        #         return
+        # else:
+        #     pass    
+        
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gri1pper'):
+            return
+        time.sleep(1)
+        code = self._arm.stop_lite6_gripper()
+        if not self._check_code(code, 'stop_lite6_gripper'):
+            return
+        time.sleep(0.5)
+
+        self.sound.Effect_play(f'sealing.mp3')
+        
+        code = self._arm.set_tool_position(z=-70, speed=self._tcp_speed,
+                                            mvacc=self._tcp_acc, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        self.motion_home()
+
 
     def motion_grab_cup(self):
         code = self._arm.open_lite6_gripper()
@@ -2086,11 +3084,11 @@ class RobotMain(object):
         if not self._check_code(code, 'set_servo_angle'):
             return
 
-        # 아이스크림 위치
-        code = self._arm.set_position(*[243.1, 134.7, 300, -59.6, 88.5, 29.5], speed=self._tcp_speed,
-                                          mvacc=self._tcp_acc, radius=20.0, wait=True)
-        if not self._check_code(code, 'set_position'):
-            return
+        # # 아이스크림 위치
+        # code = self._arm.set_position(*[243.1, 134.7, 300, -59.6, 88.5, 29.5], speed=self._tcp_speed,
+        #                                   mvacc=self._tcp_acc, radius=20.0, wait=False)
+        # if not self._check_code(code, 'set_position'):
+        #     return
         
         # # 토핑가는 웨이포인트
         # code = self._arm.set_servo_angle(angle=[34.5, -33.9, 18, 101.1, 73.8, 49.2], speed=self._angle_speed,
@@ -2099,34 +3097,32 @@ class RobotMain(object):
         #     return
 
 
-
-    def motion_helix(self, radius, height, turns, mode):
+    def motion_helix(self, radius, height, turns, mode, speed=20):
         # 나선의 중점 설정
-        if mode == 1:
-            icecream_center = self.position_icecream
-            icecream_center[2] = icecream_center[2]+60
-
-            helix_position = icecream_center
-
-        elif mode == 2:
+        if mode == 0:
             topping_A_center = self.position_topping_A
             topping_A_center[2] = topping_A_center[2]+30
 
             helix_position = topping_A_center
-        elif mode == 3:
+        elif mode == 1:
             topping_B_center = self.position_topping_B
             topping_B_center[2] = topping_B_center[2]+30
 
             helix_position = topping_B_center
-        elif mode == 4:
+        elif mode == 2:
             topping_C_center = self.position_topping_C
             topping_C_center[2] = topping_C_center[2]+30
 
             helix_position = topping_C_center
+        elif mode == 3:
+            icecream_center = self.position_icecream
+            icecream_center[2] = icecream_center[2]+60
+
+            helix_position = icecream_center
             
 
         # t 값 생성
-        t_values = np.linspace(0, turns * 2 * np.pi, 100)  # 100개의 점을 생성
+        t_values = np.linspace(0, turns * 2 * np.pi, 1000)  # 100개의 점을 생성
 
         # x, y, z 좌표 계산
         x_values = radius * np.cos(t_values) + helix_position[0]
@@ -2143,31 +3139,168 @@ class RobotMain(object):
         # 시작 위치로 이동
         code = self._arm.set_position(*[start_point[0], start_point[1], start_point[2], 
                                         helix_position[3], helix_position[4], helix_position[5]], 
-                                        speed=20, mvacc=self._tcp_acc, radius=0.0, wait=False)
+                                        speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
         if not self._check_code(code, 'set_position'):
             return
 
         # 나선을 따라 이동
         for x, y, z in zip(x_values, y_values, z_values):
             code = self._arm.set_position(*[x, y, z, helix_position[3], helix_position[4], helix_position[5]], 
-                                        speed=20, mvacc=self._tcp_acc, radius=30.0, wait=False)
+                                        speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return
 
         # 끝점으로 이동
         code = self._arm.set_position(*[helix_position[0], helix_position[1], end_point[2],
                                         helix_position[3], helix_position[4], helix_position[5]], 
-                                        speed=20, mvacc=self._tcp_acc, radius=0.0, wait=True)
+                                        speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
+    def motion_sprial(self, radius, height, turns, speed=20):
+
+        icecream_center = self.position_icecream
+        icecream_center[2] = icecream_center[2]+60
+
+        sprial_position = icecream_center
+
+        # 세타 값(z축 주위의 각도)을 생성
+        theta = np.linspace(0, turns * 2 * np.pi, 100)
+
+        # z 값(높이) 생성
+        z = height * theta + sprial_position[2]
+
+        # 반경 값을 생성하고 높이에 따라 약간 감소하여 원뿔 모양 생성
+        r = radius * (1 - (z - sprial_position[2]) / height)
+
+        # x, y 좌표 계산
+        x = r * np.cos(theta) + sprial_position[0]
+        y = r * np.sin(theta) + sprial_position[1]
+
+    
+        # 나선을 따라 이동
+        for x_pos, y_pos, z_pos in zip(x, y, z):
+            code = self._arm.set_position(x_pos, y_pos, z_pos, sprial_position[3], sprial_position[4], sprial_position[5], 
+                                        speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
+            if not self._check_code(code, 'set_position'):
+                return
+
+    def motion_spiral3(self, radius, total_height, total_turns=5, speed=20):
+        # 현재 로봇 위치 가져오기
+        tuple_c = self._arm.get_position()
+        list_c = tuple_c[1]
+        current_position = list_c[:6]
+
+        # 중심 좌표 설정
+        cx = current_position[0]
+        cy = current_position[1]
+        cz = current_position[2]
+        num_points = 1000
+
+        # total_height가 양수이면 위로, 음수이면 아래로 원뿔을 생성
+        z = np.linspace(0, total_height, num_points)  # 높이가 0에서 total_height까지 증가 또는 감소
+        r = radius * (1 - np.abs(z / total_height))  # z의 절대값을 사용하여 반지름이 줄어듦
+
+        theta = np.linspace(0, total_turns * 2 * np.pi, num_points)  # 0에서 total_turns * 2π까지 회전
+
+        # 극 좌표를 직교 좌표로 변환하고 중심 좌표 더하기
+        x = r * np.cos(theta) + cx
+        y = r * np.sin(theta) + cy
+        z = cz + z  # cz를 기준으로 z를 증가 또는 감소시킴
+
+        # 로봇의 위치를 시간에 따라 업데이트하는 예제
+        for i in range(num_points):
+            current_x = x[i]
+            current_y = y[i]
+            current_z = z[i]
+
+            # 로봇의 자세는 원래의 자세를 유지 (roll, pitch, yaw)
+            roll = current_position[3]
+            pitch = current_position[4]
+            yaw = current_position[5]
+
+            # 위치 설정 명령
+            code = self._arm.set_position(current_x, current_y, current_z, roll, pitch, yaw,
+                                          speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
+            if not self._check_code(code, 'set_position'):
+                return
+            
+
+    def generate_conical_path(self, radius, cx, cy, cz, num_points=100, total_height= 1, total_turns=5):
+        z = np.linspace(0, total_height, num_points)  # 높이가 0에서 total_height까지
+        theta = np.linspace(0, total_turns *2* np.pi, num_points)  # 0에서 total_turns * π까지 회전
+        # r = 1 - z  # 원뿔의 반지름이 z가 증가함에 따라 감소
+        # 반경 값을 생성하고 높이에 따라 약간 감소하여 원뿔 모양 생성
+        r = radius * (1 - z)
+
+        # 극 좌표를 직교 좌표로 변환하고 중심 좌표 더하기
+        x = r * np.cos(theta) + cx
+        y = r * np.sin(theta) + cy
+        z = z + cz
+
+        return x, y, z, theta
+
+    def motion_sprial2(self, speed=20):
+        tuple_c = arm.get_position()
+        list_c = tuple_c[1]
+        current_position = list_c[:6]
+
+        icecream_center = current_position
+        # icecream_center[2] += 60  # z 좌표를 조정하여 높이 설정
+
+        # 중심 좌표 설정
+        cx = icecream_center[0]
+        cy = icecream_center[1]
+        cz = icecream_center[2]
+
+        # 로봇의 경로 계산
+        num_points = 100
+        x, y, z, theta = self.generate_conical_path(8, cx, cy, cz, num_points)
+
+        # 로봇의 위치를 시간에 따라 업데이트하는 예제
+        for i in range(num_points):
+            current_x = x[i]
+            current_y = y[i]
+            current_z = z[i]
+
+            # 로봇의 자세는 원래의 자세를 유지 (roll, pitch, yaw)
+            roll = icecream_center[3]
+            pitch = icecream_center[4]
+            yaw = icecream_center[5]
+
+            # 위치 설정 명령
+            code = self._arm.set_position(current_x, current_y, current_z, roll, pitch, yaw, 
+                                          speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
+            if not self._check_code(code, 'set_position'):
+                return
+
+            # cr = icecream_center[3]
+            # cp = icecream_center[4]
+            # cy = icecream_center[5]
+
+            # # 위치 설정 명령
+            # code = self._arm.set_tool_position(roll=cr, pitch=cp, yaw=cy, relative = True,
+            #                               speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
+            # if not self._check_code(code, 'set_position'):
+            #     return
+            
+            # # print(f"Time step {i}: theta={theta}")
+            # print(np.sin(theta[i]))
+
+
+
+
+
+
     def motion_make_icecream(self):
+        
         # 아이스크림 위치
         code = self._arm.set_position(*[243.1, 134.7, 300, -59.6, 88.5, 29.5], speed=self._tcp_speed,
                                         mvacc=self._tcp_acc, radius=20.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
+        self.sound.Effect_play(f'making.mp3')
         # 아이스크림 추출 준비
         code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
         if not self._check_code(code, 'set_cgpio_digital'):
@@ -2178,15 +3311,15 @@ class RobotMain(object):
         if not self._check_code(code, 'set_position'):
             return
         
-        # code = self._arm.set_pause_time(3)
-        # if not self._check_code(code, 'set_pause_time'):
-        #     return
-
         time.sleep(7)
 
-        self.motion_helix(8, -1, 5, 1)
+        # self.motion_sprial2()
+        # self.motion_spiral3(8, -5, 3, 30)
+        self.motion_spiral3(radius=15, total_height=-40, total_turns=5, speed=50)
 
-        time.sleep(3)
+        # self.motion_helix(8, -1, 3, 3, 30)
+
+        time.sleep(5)
         code = self._arm.set_cgpio_digital(3, 0, delay_sec=0)
         if not self._check_code(code, 'set_cgpio_digital'):
             return
@@ -2205,14 +3338,14 @@ class RobotMain(object):
             return
 
     def motion_get_topping(self, topping):
-        if topping == 1:
+        if topping == 0:
             #-----------토핑 A----------
             code = self._arm.set_position(*self.position_topping_B, speed=20,
                                             mvacc=self._tcp_acc, radius=0.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return 
 
-            code = self._arm.set_position(*[-194.485367, 165.352158, 300, 15, 89.68411, 143.873541], speed=20,
+            code = self._arm.set_position(*self.position_topping_A, speed=20,
                                             mvacc=self._tcp_acc, radius=0.0, wait=True)
             if not self._check_code(code, 'set_position'):
                 return 
@@ -2222,8 +3355,18 @@ class RobotMain(object):
             if not self._check_code(code, 'set_position'):
                 return
             
-            self.motion_helix(8, -1, 5, 2)
-        elif topping == 2:
+            code = self._arm.set_cgpio_digital(0, 1, delay_sec=0)
+            if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+            time.sleep(0.5)
+            self.motion_helix(8, -1, 1, 0, 40)
+
+            code = self._arm.set_cgpio_digital(0, 0, delay_sec=0)
+            if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+            time.sleep(0.5)
+            
+        elif topping == 1:
             #-----------토핑 B----------
             code = self._arm.set_position(*self.position_topping_B, speed=20,
                                             mvacc=self._tcp_acc, radius=0.0, wait=True)
@@ -2235,9 +3378,18 @@ class RobotMain(object):
             if not self._check_code(code, 'set_position'):
                 return
             
-            self.motion_helix(8, -1, 5, 3)
+            code = self._arm.set_cgpio_digital(1, 1, delay_sec=0)
+            if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+            time.sleep(0.5)
+            self.motion_helix(8, -1, 1, 1, 40)
 
-        elif topping == 3:
+            code = self._arm.set_cgpio_digital(1, 0, delay_sec=0)
+            if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+            time.sleep(0.5)
+            
+        elif topping == 2:
             #-----------토핑 C----------
             code = self._arm.set_position(*self.position_topping_B, speed=20,
                                             mvacc=self._tcp_acc, radius=0.0, wait=False)
@@ -2254,8 +3406,51 @@ class RobotMain(object):
             if not self._check_code(code, 'set_position'):
                 return
             
-            self.motion_helix(8, -1, 5, 4)
-        
+            code = self._arm.set_cgpio_digital(2, 1, delay_sec=0)
+            if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+            time.sleep(0.5)
+            self.motion_helix(8, -1, 1, 2, 40)
+
+            code = self._arm.set_cgpio_digital(2, 0, delay_sec=0)
+            if not self._check_code(code, 'set_cgpio_digital'):
+                    return
+            time.sleep(0.5)
+            
+
+    def topping_combination(self, topping_list):
+        ''' 토핑 조합
+        empty = 0
+        oreo = 1
+        chocoball = 2
+        cereal = 3
+        oreo chocoball = 4
+        oreo cereal = 5
+        chocoball cereal = 6
+        oreo chocoball cereal = 7
+        '''
+        for select in topping_list:
+            print(select)
+            if  select == 'oreo':
+                self.motion_get_topping(0)
+            elif  select == 'chocoball':
+                self.motion_get_topping(1)
+            elif  select == 'cereal':
+                self.motion_get_topping(2)
+            else:
+                pass
+
+         # 배출 웨이포인트
+        code = self._arm.set_servo_angle(angle=[180.0, -15.599979, 9.499984, 187.799981, 64.499979, 0.0,], speed=30,
+                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+
+        code = self._arm.set_servo_angle(angle=self.position_finish, speed=self._angle_speed,
+                                            mvacc=self._angle_acc, wait=False, radius=20.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+
     def motion_vent(self):
         # 배출 웨이포인트
         code = self._arm.set_servo_angle(angle=[180.0, -15.599979, 9.499984, 187.799981, 64.499979, 0.0,], speed=30,
@@ -2267,6 +3462,906 @@ class RobotMain(object):
                                             mvacc=self._angle_acc, wait=False, radius=20.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
+
+    def motion_Dondurma(self):
+        self.dondurma_someone = True
+
+        code = self._arm.set_position(*self.Dondurma_start_position, speed=100,
+                                            mvacc=5000, radius=0.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        self.sound.Effect_play(f'Dondurma_start.mp3')
+        
+        Dondurma_count = random.randrange(2,5)
+        print(Dondurma_count)
+        Dondurma_y_axis = 500
+
+        for i in range(0,Dondurma_count):
+            if self.dondurma_someone == True:
+                Dondurma_y_axis = Dondurma_y_axis-abs((self.Dondurma_start_position[1]-self.Dondurma_end_position[1])/Dondurma_count)
+                Dondurma_x_axis = random.randrange(-260,260)
+                Dondurma_z_axis = random.randrange(240,340)
+
+                # print("{} / {}  y = {} x = {} z = {}" .format(i,Dondurma_count,Dondurma_y_axis,Dondurma_x_axis,Dondurma_z_axis))
+                
+                self.Dondurma_hand()
+                if self.dondurma_detected:
+                    code = self._arm.set_position(*[Dondurma_x_axis, -Dondurma_y_axis, Dondurma_z_axis, self.Dondurma_end_position[3],
+                                                    self.Dondurma_end_position[4], self.Dondurma_end_position[5]], speed=450, mvacc=5000, radius=0.0, wait=False)
+                    if not self._check_code(code, 'set_position'):
+                        return
+                    
+                    self.sound.Effect_play(f'Dondurma_effect_{i}.mp3')
+                print(f'i                      {i}')
+                time.sleep(1)
+            else:
+                break
+
+
+        code = self._arm.set_position(*self.Dondurma_end_position,
+                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        self.sound.Effect_play(f'THX')
+        time.sleep(10)
+        
+        # print(Dondurma_count)
+        # print(Dondurma_start_position[1] - Dondurma_end_position[1])
+        # print(abs((Dondurma_start_position[1]-Dondurma_end_position[1])/Dondurma_count))
+
+        # code = self._arm.set_position(y=abs((Dondurma_start_position[1]-Dondurma_end_position[1])/Dondurma_count), radius=0, speed=10, mvacc=50, relative=True, wait=False)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+
+    def motion_stack_icecream(self):
+        code = self._arm.set_position(*self.Dondurma_end_position,
+                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        code = self._arm.set_position(*[60.558903, -156.656799, 285, 54.735632, 89.999981, -82.133271],
+                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(z=178, speed=50, mvacc=5000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        time.sleep(2)
+
+        code = self._arm.set_position(*[117.877991, -102.960449, 178, 54.735632, 89.999981, -82.133271],
+                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        code = self._arm.stop_lite6_gripper()
+        if not self._check_code(code, 'stop_lite6_gripper'):
+            return
+        time.sleep(0.5)
+
+        code = self._arm.set_position(z=300, speed=50, mvacc=5000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        code = self._arm.set_servo_angle(angle=[270, -7.800018, 32.599981, 267.599996, 90, -40], speed=self._angle_speed,
+                                            mvacc=self._angle_acc, wait=False, radius=20.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+
+    def motion_dump_icecream(self):
+        code = self._arm.set_servo_angle(angle=[270, -7.800018, 32.599981, 267.599996, 90, -40], speed=self._angle_speed,
+                                            mvacc=self._angle_acc, wait=False, radius=20.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        code = self._arm.set_position(*[117.877991, -102.960449, 300, 54.735632, 89.999981, -82.133271],
+                                        speed=50, mvacc=5000, radius=20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(z=178, speed=50, mvacc=5000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        time.sleep(0.5)
+        
+        code = self._arm.set_position(*[60.558903, -156.656799, 178, 54.735632, 89.999981, -82.133271],
+                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.close_lite6_gripper()
+        if not self._check_code(code, 'close_lite6_gripper'):
+            return
+        time.sleep(2)
+
+        code = self._arm.set_position(z=250, speed=50, mvacc=5000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_servo_angle(angle=[180, 15.58, 35, 269.87, 80, -19.34], speed=80,
+                                            mvacc=self._angle_acc, wait=False, radius=20.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        # self.motion_place_trash()
+    
+        
+
+    def motion_trash_capsule(self):
+        try:
+            self.clientSocket.send('motion_trash_start'.encode('utf-8'))
+        except:
+            print('socket error')
+        
+        # 홈에서 템핑가는 토핑밑
+        self._angle_speed = 20
+        self._angle_acc = 200
+        code = self._arm.set_servo_angle(angle=[51.2, -8.7, 13.8, 95.0, 86.0, 17.0], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=False, radius=50.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        # 홈에서 템핑가는 토핑밑에서 올라옴
+        code = self._arm.set_servo_angle(angle=[-16.2, -19.3, 42.7, 82.0, 89.1, 55.0], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        self.sound.Effect_play(f'remove_capsule')
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        code = self._arm.set_servo_angle(angle=[-19.9, -19.1, 48.7, 87.2, 98.7, 60.0], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        # 템핑 앞
+        code = self._arm.set_position(*[222.8, 0.9, 470.0, -153.7, 87.3, -68.7], speed=self._tcp_speed,
+                                      mvacc=self._tcp_acc, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        # 캡슐 집고 올림
+        code = self._arm.set_position(*self.position_capsule_grab, speed=self._tcp_speed,
+                                      mvacc=self._tcp_acc, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        code = self._arm.close_lite6_gripper()
+        if not self._check_code(code, 'close_lite6_gripper'):
+            return
+        time.sleep(1)
+        code = self._arm.set_position(z=30, radius=-1, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+                                      wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        # 캡슐 집고 올림
+        self._tcp_speed = 20
+        self._tcp_acc = 500
+        code = self._arm.set_position(*[221.9, -5.5, 500.4, -153.7, 87.3, -68.7], speed=self._tcp_speed,
+                                      mvacc=self._tcp_acc, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        # 탬핑에서부터 버리는 동작
+        self._angle_speed = 20
+        self._angle_acc = 100
+        code = self._arm.set_servo_angle(angle=[-10.7, -2.4, 53.5, 50.4, 78.1, 63.0], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=False, radius=10.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+
+        # 뒤집어서 쓰래기통 위
+        self._angle_speed = 20
+        self._angle_acc = 100
+        code = self._arm.set_servo_angle(angle=[18.0, 11.2, 40.4, 90.4, 58.7, -148.8], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        # 터는 동작
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        # time.sleep(2)
+        code = self._arm.set_servo_angle(angle=[25.2, 15.2, 42.7, 83.2, 35.0, -139.8], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        code = self._arm.set_servo_angle(angle=[18.0, 11.2, 40.4, 90.4, 58.7, -148.8], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        code = self._arm.set_servo_angle(angle=[25.2, 15.2, 42.7, 83.2, 35.0, -139.8], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        code = self._arm.stop_lite6_gripper()
+        if not self._check_code(code, 'stop_lite6_gripper'):
+            return
+        
+        # 털고 복귀하는 토핑 밑
+        self._angle_speed = 20
+        self._angle_acc = 100
+        code = self._arm.set_servo_angle(angle=[28.3, -9.0, 12.6, 85.9, 78.5, 20.0], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=False, radius=30.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        
+        code = self._arm.set_servo_angle(angle=[149.3, -9.4, 10.9, 114.7, 69.1, 26.1], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=False, radius=50.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        # 홈 위치
+        code = self._arm.set_servo_angle(angle=[179.2, -42.1, 7.4, 186.7, 41.5, -1.6], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        try:
+            self.clientSocket.send('motion_trash_finish'.encode('utf-8'))
+        except:
+            print('socket error')
+        time.sleep(0.5)
+
+
+    def motion_comeback(self, num):
+        if num == 1:
+            print("motion_grab_capsule")
+            self.motion_home()
+            #캡슐 지그에 가져다 놓기 추가
+        elif num == 2:
+            print('motion_check_sealing')
+            #캡슐 지그에 가져다 놓기 추가
+        elif num == 3:
+            print("motion_place_capsule")
+
+            # 템핑 앞
+            code = self._arm.set_position(*[222.8, 0.9, 470.0, -153.7, 87.3, -68.7], speed=self._tcp_speed,
+                                        mvacc=self._tcp_acc, radius=0.0, wait=True)
+            if not self._check_code(code, 'set_position'):
+                return
+            
+            code = self._arm.open_lite6_gripper()
+            if not self._check_code(code, 'open_lite6_gripper'):
+                return
+            time.sleep(1)
+            
+            # 캡슐 집고 올림
+            code = self._arm.set_position(*self.position_capsule_grab, speed=self._tcp_speed,
+                                        mvacc=self._tcp_acc, radius=0.0, wait=True)
+            if not self._check_code(code, 'set_position'):
+                return
+            
+            code = self._arm.close_lite6_gripper()
+            if not self._check_code(code, 'close_lite6_gripper'):
+                return
+            time.sleep(1)
+            code = self._arm.set_position(z=25, radius=-1, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+                                        wait=True)
+            if not self._check_code(code, 'set_position'):
+                return
+            
+            self._tcp_speed = 100
+            self._tcp_acc = 1000
+
+            # 캡슐 집고 올림
+            code = self._arm.set_position(*[221.9, -15.5, 500.4, -153.7, 87.3, -68.7], speed=self._tcp_speed,
+                                        mvacc=self._tcp_acc, radius=0.0, wait=True)
+            if not self._check_code(code, 'set_position'):
+                return
+            
+
+            code = self._arm.set_servo_angle(angle=[-10.7, -2.4, 53.5, 70, 78.1, 63.0], speed=self._angle_speed,
+                                            mvacc=self._angle_acc, wait=False, radius=10.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+
+            #토핑 아래로 지나가는 2
+            code = self._arm.set_servo_angle(angle=[10, -20.8, 7.1, 106.7, 79.9, 26.0], speed=self._angle_speed,
+                                            mvacc=self._angle_acc, wait=False, radius=50.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+
+            #토핑 아래로 지나가는 1
+            code = self._arm.set_servo_angle(angle=[81.0, -10.8, 6.9, 103.6, 88.6, 9.6], speed=self._angle_speed,
+                                            mvacc=self._angle_acc, wait=False, radius=40.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            
+            self.motion_place_fail_capsule()
+
+        elif num == 4:
+            print("a")
+        elif num == 5:
+            print("a")
+
+    def motion_grap_squeegee(self):
+        #스키지 잡으러 가기
+        code = self._arm.set_position(*[-249, 128.5, 171, -90, 90, 90], speed=100,
+                                                mvacc=1000, radius=20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        time.sleep(1)
+        # 스키지 위치
+        code = self._arm.set_position(*[-323.5, 128.5, 171, 90, 90, -90], speed=30,
+                                                mvacc=100, radius=00.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        code = self._arm.close_lite6_gripper()
+        if not self._check_code(code, 'close_lite6_gripper'):
+            return
+        time.sleep(2)
+
+        # 우측 배드 초기 위치
+        code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=100,
+                                        mvacc=1000, radius=20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+
+    def motion_sweeping_right(self):        
+        up_speed = 200
+        up_acc = 2000
+        down_speed = 100
+        down_acc = 1000
+        code = self._arm.set_position(*[-130 ,  -83  , 400 , 180.00002, -0.544826, 88.453969], speed=up_speed,
+                        mvacc=up_acc, radius=20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(z=265, speed=down_speed,
+                                        mvacc=down_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+
+
+        # 2.sweep
+        code = self._arm.set_position(y=5, speed=down_speed,
+                                        mvacc=down_acc, radius=0.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(x=-180, y=30, speed=down_speed,
+                                        mvacc=down_acc, radius=100.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(y=60, speed=down_speed,
+                                        mvacc=down_acc, radius=100.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # 3.up
+        code = self._arm.set_position(z=368.65, speed=up_speed,
+                                        mvacc=up_acc, radius=0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        #6. move to point 3
+        code = self._arm.set_position(*[-250, -83, 368.65, 180.00002, -0.544826, 88.453969], speed=up_speed,
+                                        mvacc=up_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        code = self._arm.set_position(z=265, speed=down_speed,
+                        mvacc=down_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # sweep 
+        code = self._arm.set_position(y=60, speed=down_speed,
+                                mvacc=down_acc, radius=0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # up
+        code = self._arm.set_position(z=368.65, speed=up_speed,
+                                mvacc=up_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # rotate and 7.move to 5 again  
+        code = self._arm.set_position(*[-180,  -153,  368.65, -180.00002, 0.544826, -88.453969 ], speed=up_speed,
+                                        mvacc=up_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # down
+        code = self._arm.set_position(z=265, speed=down_speed,
+                                mvacc=down_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # sweep
+        code = self._arm.set_position(y=-30, speed=down_speed,
+                                        mvacc=down_acc, radius=0.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(x=-132, y=-10, speed=down_speed,
+                                        mvacc=down_acc, radius=100.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(y=70, speed=down_speed,
+                                        mvacc=down_acc, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        # 9.up
+        code = self._arm.set_position(z=368.65, speed=up_speed,
+                                        mvacc=up_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # 10.move to 7 & down
+        code = self._arm.set_position(*[-250,  -153.66,  368.65, -180.00002, 0.544826, -88.453969], speed=up_speed,
+                                        mvacc=up_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(z=265, speed=down_speed,
+                                mvacc=down_acc, radius=0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # 11.sweep
+        code = self._arm.set_position(y=70, speed=down_speed,
+                                    mvacc=down_acc, radius=-20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        #up
+        code = self._arm.set_position(z=368.65, speed=up_speed,
+                                    mvacc=up_acc, radius=-20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        #side sweep        
+        code = self._arm.set_position(*[-200.0, 64.623001, 368.649994, 180, 0, -0], speed=up_speed,
+                                    mvacc=up_acc, radius=-20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        code = self._arm.set_position(*[-290, 169.60968, 265, 180, 0.0, -0.0], speed=down_speed,
+                                    mvacc=down_acc, radius=-20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        code = self._arm.set_position(x=150, speed=down_speed,
+                                    mvacc=down_acc, radius=-20.0, relative=True,wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        # # 우측 배드 초기 위치
+        # code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=50,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=True)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+
+
+#####################################################################################################################
+############################ have to modify inital position, +side sweep ############################################
+#####################################################################################################################
+    def motion_sweeping_left(self): 
+        up_speed = 200
+        up_acc = 2000
+        down_speed = 100
+        down_acc = 1000
+
+        # 좌측 배드 초기 위치
+        code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=up_speed,
+                                mvacc=up_acc, radius=0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # move to point (1)
+        code = self._arm.set_position(*[135,-53.5, 368.65, 180, 0.0, 90], speed=up_speed,
+                                mvacc=up_acc, radius=0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        # down
+        code = self._arm.set_position(z=265, speed=down_speed,
+                                        mvacc=down_acc, radius=0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # 2.sweep
+        code = self._arm.set_position(y=5, speed=down_speed,
+                                        mvacc=down_acc, radius=0.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(x=185, y=30, speed=down_speed,
+                                        mvacc=down_acc, radius=100.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(y=60, speed=down_speed,
+                                        mvacc=down_acc, radius=100.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        # up
+        code = self._arm.set_position(z=368.65, speed=up_speed,
+                                mvacc=up_acc, radius=0.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        # move to point (3)
+        code = self._arm.set_position(*[262,-53.5, 368.65, 180, 0, 90], speed=up_speed,
+                                        mvacc=up_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return              
+        # down
+        code = self._arm.set_position(z=265, speed=down_speed,
+                                        mvacc=down_acc, radius=0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        # 1st sweep
+        code = self._arm.set_position(y=60, speed=down_speed,
+                                        mvacc=down_acc, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return        
+        #up
+        code = self._arm.set_position(z=368.65, speed=up_speed,
+                                mvacc=up_acc, radius=0.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return            
+        #rotate & move to point (5)
+        code = self._arm.set_position(*[185, -140, 368.65, -180, 0.0, -90], speed=up_speed,
+                                        mvacc=up_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        #down
+        code = self._arm.set_position(z=265, speed=down_speed,
+                                        mvacc=down_acc, radius=0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        # 8.sweep 53.66에서 수정함 -> 56.66 -> 59.66
+        code = self._arm.set_position(y=-30, speed=down_speed,
+                                        mvacc=down_acc, radius=0.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(x=132, y=-10, speed=down_speed,
+                                        mvacc=down_acc, radius=100.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(y=70, speed=down_speed,
+                                        mvacc=down_acc, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        #up
+        code = self._arm.set_position(z=368.65, speed=up_speed,
+                                mvacc=up_acc, radius=20.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        #move to point(7)
+        code = self._arm.set_position(*[262, -140, 368.65, -180,0,-90], speed=up_speed,
+                                        mvacc=up_acc, radius=0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        #down
+        code = self._arm.set_position(z=265, speed=down_speed,
+                                        mvacc=down_acc, radius=0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        # 2st sweep
+        code = self._arm.set_position(y=70, speed=down_speed,
+                                        mvacc=down_acc, radius=20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        # # 좌측 배드 초기 위치
+        # code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=self._tcp_speed,
+        #                         mvacc=self._tcp_acc, radius=0, wait=True)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+
+        # code = self._arm.set_position(*[290, 169.60968, 265.1, -180, 0.0, -180.0], speed=self._tcp_speed,
+        #                             mvacc=self._tcp_acc, radius=-20.0, wait=True)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+        # code = self._arm.set_position(x=-150, speed=self._tcp_speed,
+        #                             mvacc=self._tcp_acc, radius=-20.0, relative=True,wait=True)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+
+
+    def motion_place_squeegee(self):
+        # 우측 배드 초기 위치
+        code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=100,
+                                        mvacc=1000, radius=20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+
+        # 스키지 위치
+        code = self._arm.set_position(*[-323.5, 128.5, 200, 90, 90, -90], speed=100,
+                                                mvacc=1000, radius=00.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.set_position(z=172, speed=30,
+                                                mvacc=100, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        time.sleep(1)
+        code = self._arm.stop_lite6_gripper()
+        if not self._check_code(code, 'stop_lite6_gripper'):
+            return
+        time.sleep(1)
+
+        code = self._arm.set_position(*[-249, 128.5, 172.5, -90, 90, 90], speed=30,
+                                                mvacc=100, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+    def motion_pick_felldown_trash(self, target_x, target_y, deg):
+        code = self._arm.set_position(x=target_x, y=target_y, yaw=deg, speed=100,
+                                        mvacc=1000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        code = self._arm.set_position(z=250, speed=30,
+                                        mvacc=100, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+        code = self._arm.close_lite6_gripper()
+        if not self._check_code(code, 'close_lite6_gripper'):
+            return
+        time.sleep(2)
+
+        code = self._arm.set_position(z=300, speed=100,
+                                        mvacc=1000, radius=0.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+    def motion_dump_trash(self):
+        time.sleep(3)
+        tuple_c = arm.get_position()
+        list_c = tuple_c[1]
+        current_position = list_c[:6]
+        print(f'current_position[0] {current_position[0]}')
+
+        if current_position[0] > 0:
+            # left way point
+            code = self._arm.set_servo_angle(angle=[41.185925, -42.989596, 31.248774, -0.0, 74.238371, 176.185954], speed=40,
+                                            mvacc=self._angle_acc, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            # # left way point
+            # code = self._arm.set_position(*[80, 70, 350.0, 180, -0.0, -135], speed=self._tcp_speed,
+            #                                 mvacc=self._tcp_acc, radius=20.0, wait=True)
+            # if not self._check_code(code, 'set_position'):
+            #     return
+            # middle
+            code = self._arm.set_position(*[3.7e-05, 120, 280.0, -180, 0, -90], speed=self._tcp_speed,
+                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            if not self._check_code(code, 'set_position'):
+                return
+            code = self._arm.set_position(y=180, speed=self._tcp_speed,
+                                            mvacc=self._tcp_acc, radius=20.0, wait=True)
+            if not self._check_code(code, 'set_position'):
+                return
+            
+            # 터는 동작
+            code = self._arm.open_lite6_gripper()
+            if not self._check_code(code, 'open_lite6_gripper'):
+                return
+            time.sleep(1)
+
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=100,
+                                         mvacc=1000, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=100,
+                                         mvacc=1000, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=100,
+                                         mvacc=1000, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=100,
+                                         mvacc=1000, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+
+            code = self._arm.stop_lite6_gripper()
+            if not self._check_code(code, 'stop_lite6_gripper'):
+                return
+            time.sleep(2)
+
+            # right way point
+            code = self._arm.set_position(*[-80, 70, 350, 180, -0.0, -45], speed=self._tcp_speed,
+                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            if not self._check_code(code, 'set_position'):
+                return
+            
+        else:
+            # right way point
+            code = self._arm.set_servo_angle(angle=[138.814095, -42.989596, 31.248774, -0.0, 74.238371, 183.814085], speed=40,
+                                            mvacc=self._angle_acc, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            # # right way point
+            # code = self._arm.set_position(*[-80, 70, 350, 180, -0.0, -45], speed=self._tcp_speed,
+            #                                 mvacc=self._tcp_acc, radius=20.0, wait=False)
+            # if not self._check_code(code, 'set_position'):
+            #     return
+            # middle
+            code = self._arm.set_position(*[3.7e-05, 120, 280.0, -180, 0, -90], speed=self._tcp_speed,
+                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            if not self._check_code(code, 'set_position'):
+                return
+            code = self._arm.set_position(y=180, speed=self._tcp_speed,
+                                            mvacc=self._tcp_acc, radius=20.0, wait=True)
+            if not self._check_code(code, 'set_position'):
+                return
+
+            code = self._arm.open_lite6_gripper()
+            if not self._check_code(code, 'open_lite6_gripper'):
+                return
+            time.sleep(1)
+
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=100,
+                                         mvacc=1000, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=100,
+                                         mvacc=1000, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=100,
+                                         mvacc=1000, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=100,
+                                         mvacc=1000, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+
+            code = self._arm.stop_lite6_gripper()
+            if not self._check_code(code, 'stop_lite6_gripper'):
+                return
+            time.sleep(2)
+
+            # right way point
+            code = self._arm.set_position(*[-80, 70, 350, 180, -0.0, -45], speed=self._tcp_speed,
+                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            if not self._check_code(code, 'set_position'):
+                return
+            
+    def motion_cleaning(self, mode, target_x=None, target_y=None, target_deg=None):
+        time.sleep(3)
+        tuple_c = arm.get_position()
+        list_c = tuple_c[1]
+        current_position = list_c[:6]
+        print(f'current_position[0] {current_position[0]}')
+
+        self.sound.Effect_play(f'cleaning.mp3')
+
+        if mode == 0: #Squeeze
+            if current_position[0] > 0:
+                self.left_to_right()
+            else :
+                pass
+                
+            code = self._arm.set_servo_angle(angle=self.position_home, speed=50,
+                                        mvacc=100, wait=True, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            
+            self.motion_grap_squeegee()
+
+            #스위핑 함수 추가
+            self.motion_sweeping_right()
+
+            self.right_to_left()
+            
+            self.motion_sweeping_left()
+
+            self.left_to_right()
+
+            self.motion_place_squeegee()
+
+            self.motion_home()
+
+        elif mode == 1: #felldown
+            if current_position[0] > 0 and target_x > 0:
+                # 좌측 배드 초기 위치
+                code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=self._tcp_speed,
+                                        mvacc=self._tcp_acc, radius=0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+            elif current_position[0] < 0 and target_x < 0:
+                
+                # 우측 배드 초기 위치
+                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
+                                                mvacc=self._tcp_acc, radius=20.0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+
+            elif current_position[0] > 0 and target_x < 0:
+                self.left_to_right()
+
+                # 우측 배드 초기 위치
+                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
+                                                mvacc=self._tcp_acc, radius=20.0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+                
+            elif current_position[0] < 0 and target_x > 0:
+                self.right_to_left()
+
+                # 좌측 배드 초기 위치
+                code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=self._tcp_speed,
+                                        mvacc=self._tcp_acc, radius=0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+
+            self.motion_pick_felldown_trash(target_x, target_y, target_deg)
+
+            self.motion_dump_trash()
+
+            self.motion_home()
+
+        elif mode == 2:#standup
+            if current_position[0] > 0 and target_x > 0:
+                # 좌측 배드 초기 위치
+                code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=self._tcp_speed,
+                                        mvacc=self._tcp_acc, radius=0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+            elif current_position[0] < 0 and target_x < 0:
+                # 우측 배드 초기 위치
+                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
+                                                mvacc=self._tcp_acc, radius=20.0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+            elif current_position[0] > 0 and target_x < 0:
+                self.left_to_right()
+
+                # 우측 배드 초기 위치
+                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
+                                                mvacc=self._tcp_acc, radius=20.0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+            elif current_position[0] < 0 and target_x > 0:
+                self.right_to_left()
+
+                # 좌측 배드 초기 위치
+                code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=self._tcp_speed,
+                                        mvacc=self._tcp_acc, radius=0, wait=True)
+                if not self._check_code(code, 'set_position'):
+                    return
+
 
 # code = self._arm.set_position(*[-178.926392, -47.471741, 200, -41.833539, 88.173277, -122.563235], speed=self._tcp_speed-50,
 #                                 mvacc=self._tcp_acc, radius=0.0, wait=True)
@@ -2285,460 +4380,622 @@ class RobotMain(object):
         #     print("!!!!!!!!!!!!!!1", self._arm._arm.get_common_info(101, return_val=True))
         # # print("!!!!!!!!!!!!!!1", self._arm.get_c31_error_info())
 
-    
 
-    
+    def right_to_left(self):
+        # # right way point
+        # code = self._arm.set_position(*[-156.067001, 70, 290.0, 180, -0.0, -45], speed=self._tcp_speed,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=False)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+        # # middle
+        # code = self._arm.set_position(*[3.7e-05, 120, 270., -180, 0, -90], speed=self._tcp_speed,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=False)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+        # # left way point
+        # code = self._arm.set_position(*[156.067001, 70, 290.0, 180, -0.0, -135], speed=self._tcp_speed,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=True)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+        
+        # right way point
+        code = self._arm.set_servo_angle(angle=[138.814095, -42.989596, 31.248774, -0.0, 74.238371, 183.814085], speed=50,
+                                        mvacc=self._angle_acc, wait=False, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        # # right way point
+        # code = self._arm.set_position(*[-80, 70, 350, 180, -0.0, -45], speed=self._tcp_speed,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=False)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+        # middle
+        code = self._arm.set_position(*[3.7e-05, 120, 280.0, -180, 0, -90], speed=150,
+                                        mvacc=1000, radius=20.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        # left way point
+        code = self._arm.set_position(*[80, 70, 350.0, 180, -0.0, -135], speed=150,
+                                        mvacc=1000, radius=20.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        
+    def left_to_right(self):
+        # # left way point
+        # code = self._arm.set_position(*[156.067001, 70, 290.0, 180, -0.0, -135], speed=self._tcp_speed,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=False)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+        # # middle
+        # code = self._arm.set_position(*[3.7e-05, 120, 270., -180, 0, -90], speed=self._tcp_speed,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=False)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+        # # right way point
+        # code = self._arm.set_position(*[-156.067001, 70, 290.0, 180, -0.0, -45], speed=self._tcp_speed,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=True)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+
+        # left way point
+        code = self._arm.set_servo_angle(angle=[41.185925, -42.989596, 31.248774, -0.0, 74.238371, 176.185954], speed=50,
+                                        mvacc=self._angle_acc, wait=False, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+
+        # # left way point
+        # code = self._arm.set_position(*[80, 70, 350.0, 180, -0.0, -135], speed=self._tcp_speed,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=True)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+        
+        # middle
+        code = self._arm.set_position(*[3.7e-05, 120, 280.0, -180, 0, -90], speed=150,
+                                        mvacc=1000, radius=20.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+        # right way point
+        code = self._arm.set_position(*[-80, 70, 350, 180, -0.0, -45], speed=150,
+                                        mvacc=1000, radius=20.0, wait=False)
+        if not self._check_code(code, 'set_position'):
+            return
+
+
 
     def test_main(self):
 
+        #----------initial----------
+        self.sound = Hi5_Sound()
+        self.sound.sound_init()
+
+
+        self.sound.BGM_play()
+
+        self.motion_home()
+
+
+        self.capsule_position = 1
+
+        self.motion_grab_capsule()
+
+        self.motion_check_sealing()
+
+        self.motion_place_capsule()
+
+        # # self.motion_place_fail_capsule()
+
+        # self.motion_grab_cup()
+
+        # self.motion_make_icecream()
+
+        # self.motion_icecream_to_topping()
+
+        # self.topping_combination(self.topping_list)
+
+        # self.motion_Dondurma()
+
+        # self.motion_trash_capsule()
+
+        # self.motion_home()
+
+
+
+
+
+
+
+
+
+
+
+        # self.motion_dump_icecream()
+        # self.motion_place_trash()
+
+    
+
+
         # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
+        
+
+
+        # 지그 3 위치
+        # get_position :(0, [60.558903, -156.656799, 176.482208, 54.735632, 89.999981, -82.133271]) 
+        # get_position(radian) :(0, [60.558903, -156.656799, 176.482208, 0.955317, 1.570796, -1.433496]) 
+        # get_servo_angle :(0, [312.613737, 31.147705, 22.619629, 269.488407, 90.0767, 8.527789, 0.0])
+
+        # 지금 3 뒤로 빠지기
+        # get_position :(0, [117.877991, -102.960449, 177.999985, 54.735632, 89.999981, -82.133271]) 
+        # get_position(radian) :(0, [117.877991, -102.960449, 177.999985, 0.955317, 1.570796, -1.433496]) 
+        # get_servo_angle :(0, [339.481103, 32.322039, 27.32642, 296.263355, 87.784984, 4.478811, 0.0])
+
+        # 복귀
+        # get_position :(0, [-61.404785, -187.122116, 327.894073, 25.866466, 86.493938, -153.625455]) 
+        # get_position(radian) :(0, [-61.404785, -187.122116, 327.894073, 0.451455, 1.509604, -2.68127]) 
+        # get_servo_angle :(0, [270.000001, -7.800018, 32.599981, 267.599996, 92.099986, -38.899995, 0.0])
 
 
 
-        # self.trash_check()
 
 
-        # # 토핑 1
-       
-        # code = self._arm.set_position(*self.position_topping_A, speed=self._tcp_speed,
+
+        # tuple_c = arm.get_position()
+        # list_c = tuple_c[1]
+        # current_position = list_c[:6]
+
+        # a = ((-160) - current_position[1])
+
+        # print(a)c
+
+        ''' 
+            배드 크기 800 x 618
+            장애물 지그 위치 y 480
+            장애물 로봇 위치 50으로 둘러 있음
+
+            (618 / 2) - 480 + = -171
+            (800 / 2) - 800 = -400
+
+            squeegee_size = [260, 50]
+
+            현재 위치 = [-250 -75]
+
+            목표abs[-171] - 현재abs[-75] - 스키지abs[25] = 71
+
+            목표가 - 니까 -71 5씩 전진
+
+
+
+            현재 위치 = [0 , -171]
+
+            목표 = [0 , 0]
+
+            장애물 = [-50, -50]
+
+            목표abs[0] - 현재abs[-171] = -171 + 스키지abs[25]
+
+            while True:
+                Obstacle = [-50,-50]
+                get_position()이 y축 50일 때 x축이 -로 회피
+                0<=y<=-50 장애물
+                0<=x<=-50 장애물
+
+                if y>=-50:
+                    x는 -50 까지 회피
+                
+
+
+
+
+                set_position(x=avoid y=5, relative=True)
+
+
+
+
+
+
+
+            하고 싶은거
+            -171에서 0 까지 오는데 x축으로 로봇 위치 피하고 싶음
+            로봇은 그럼 여기서 +50 씩임
+
+
+
+
+
+
+            5씩 전진
+            목표가 -300면 +5 +5 +5 +5 +5....
+
+
+        '''
+
+        # 우측 배드 초기 위치
+        # code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=True)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+        
+
+        # Obstacle = 50
+        # goal = []
+        # squeegee_size = [260, 200]
+
+        # flag = 1
+        # while True:
+        #     tuple_c = arm.get_position()
+        #     list_c = tuple_c[1]
+        #     current_position = list_c[:6]
+
+        #     a = ((0) - (squeegee_size[0]/2) - current_position[0])
+
+        #     b = ((-180) + (squeegee_size[1]/2) - current_position[1])
+            
+        #     if flag == 1:
+        #         print('들어옴')
+        #         code = self._arm.set_position(x=a,y=b, speed=100, relative=True,
+        #                                 mvacc=self._tcp_acc, radius=20.0, wait=True)
+        #         flag = 0
+        #     print(f'{a} , {b},  {(a > 1 or a < -1)}, {(b > 1 or b < -1)}')
+        #     time.sleep(0.5)
+
+        #     if (a > 1 or a < -1) or (b > 1 or b < -1):
+        #         print(f'들어옴 {current_position[0]}        {a}')
+        #         flag = 1
+        
+
+
+
+
+
+
+
+        # self.motion_sprial2(20)
+        # # 지그 가는 웨이포인트
+        # code = self._arm.set_servo_angle(angle=[176, 27, 29.9, 76.8, 92, 180], speed=self._angle_speed,
+        #                                     mvacc=self._angle_acc, wait=False, radius=0.0)
+        # if not self._check_code(code, 'set_servo_angle'):
+        #     return
+
+
+        # # 지그C 잡으러가는 웨이포인트
+        # code = self._arm.set_servo_angle(angle=[182.6, 25.3, 27.2, 55.7, 91.5, 180], speed=self._angle_speed,
+        #                                     mvacc=self._angle_acc, wait=False, radius=20.0)
+        # if not self._check_code(code, 'set_servo_angle'):
+        #     return
+        
+        # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
+        
+        
+        
+        
+        
+        # [-137.37352, -64.524979, 199.987595, 89.659644, -73.723224, 37.119071])
+        # self.position_jig_C_grab = [-76.6, -144.6, 200, 5.7, 88.9, -50.1] #linear
+
+        # code = self._arm.set_position(*self.position_jig_C_grab, speed=self._tcp_speed,
         #                                 mvacc=self._tcp_acc, radius=0.0, wait=True)
         # if not self._check_code(code, 'set_position'):
         #     return
-        # code = self._arm.set_cgpio_digital(0, 1, delay_sec=0)
-        # if not self._check_code(code, 'set_cgpio_digital'):
-        #     return
-        # # 토핑 양만큼 멈춤
-        # # code = self._arm.set_pause_time(int(self.order_msg['makeReq']['toppingAmount']) - 1)
-        # # if not self._check_code(code, 'set_pause_time'):
-        # #     return
-        # code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
-        # if not self._check_code(code, 'set_cgpio_digital'):
-        #     return
-        # code = self._arm.set_pause_time(1)
-        # if not self._check_code(code, 'set_pause_time'):
-        #     return
-        # code = self._arm.set_cgpio_digital(0, 0, delay_sec=0)
-        # if not self._check_code(code, 'set_cgpio_digital'):
-        #     return
-        # code = self._arm.set_cgpio_digital(3, 0, delay_sec=0)
-        # if not self._check_code(code, 'set_cgpio_digital'):
-        #     return
-        
-        #-----토핑 시작-----
-        # # def motion_topping(self):
-        # try:
-        #     self.clientSocket.send('motion_topping_start'.encode('utf-8'))
-        # except:
-        #     print('socket error')
 
-        # print('send')
 
-        # # 토핑가는 웨이포인트
-        # code = self._arm.set_servo_angle(angle=[34.5, -33.9, 18, 101.1, 73.8, 49.2], speed=self._angle_speed,
+
+        # ---------------------제조 과정 ---------완
+
+        # # JSON 메시지
+        # json_message = '''
+        # {
+        #     "OR": [
+        #         {"orderId": "1", "icecream": "choco", "topping":"cereal,oreo,chocoball"}
+        #     ]
+        # }
+        # '''
+
+        # # # JSON 메시지 파싱
+        # data = json.loads(json_message)
+
+        # for order in data['OR']:
+        #     self.icecream = order['icecream']
+        #     self.topping = order['topping']
+        #     print(f"icecream: {self.icecream}, topping: {self.topping}")
+
+        #     # 토핑의 갯수 계산
+        #     self.topping_list = [t.strip() for t in self.topping.split(',')]
+        #     # topping_count = len(topping_list)
+            
+        #     print(self.topping_list)
+        #     # self.a = True
+
+        # # # 필요한 정보 추출
+        # # icecream = data["OR"]["icecream"]
+        # # topping = data["OR"]["topping"]
+        # # print(f"icecream: {icecream}, topping: {topping}")
+
+        # # topping_list = [t.strip() for t in topping.split(',')]
+        # # print(topping_list)
+
+        # self.sound.Effect_play(f'order.mp3')
+        # self.sound.Effect_play(f'{self.icecream}.mp3')
+        # for i in self.topping_list:
+        #     self.sound.Effect_play(f'{i}')
+        # self.sound.Effect_play(f'makestart.mp3')
+
+        # self.motion_home()
+
+        # self.capsule_position = 1
+
+        # self.motion_grab_capsule()
+
+        # self.motion_check_sealing()
+
+        # self.motion_place_capsule()
+
+        # # self.motion_place_fail_capsule()
+
+        # self.motion_grab_cup()
+
+        # self.motion_make_icecream()
+
+        # self.motion_icecream_to_topping()
+
+        # self.topping_combination(self.topping_list)
+
+        # self.motion_Dondurma()
+
+        # self.motion_trash_capsule()
+
+        # self.motion_home()
+
+
+
+        # ---------------------청소 과정 --------- 
+        # self.motion_home()
+
+        # self.motion_cleaning(0)
+
+        # self.motion_cleaning(1, -319.68, -130.56, 42.6)
+
+        # self.motion_cleaning(1, 290.94, -100.48, 146.89)
+
+        # self.motion_home()
+
+   
+
+
+        #-------init part-------
+
+        # good = 0
+
+        # self.vision()
+        # time.sleep(10)
+        # self.motion_home()
+
+        # while True:
+        #     if self.icecream:
+        #         self.motion_home()
+
+        #         self.motion_grab_capsule()
+
+        #         self.motion_check_sealing()
+
+        #         # self.check_sealing()
+        #         time.sleep(5)
+
+        #         if self.detect_sealing:
+        #             self.motion_place_capsule()
+        #             good = 1
+
+        #         else:
+        #             self.motion_place_fail_capsule()
+        #             good = 0
+
+        #         if good:
+        #             self.motion_grab_cup()
+
+        #             self.motion_make_icecream()
+                    
+        #             self.motion_icecream_to_topping()
+
+        #             self.topping_combination(self.topping_list)
+
+        #             self.motion_vent()
+
+        #             self.motion_Dondurma()
+
+        #             self.motion_trash_capsule()
+
+        #             self.motion_home()
+        #         break
+
+
+
+        # Dondurma_start_position = [0.0, -500, 285, 54.735632, 89.999981, -35.264406] #linear
+        # Dondurma_end_position = [0.0, -180, 285, 54.735632, 89.999981, -35.264406] #linear
+
+        # code = self._arm.set_position(*Dondurma_start_position, speed=100,
+        #                                     mvacc=5000, radius=0.0, wait=True)
+        # if not self._check_code(code, 'set_position'):
+        #     return
+
+# print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
+
+
+
+        #토핑 밑 그리퍼 아래
+        # code = self._arm.set_servo_angle(angle=[88,-27,24.5,184.7,-43.4,-2.1], speed=20,
         #                                     mvacc=self._angle_acc, wait=True, radius=0.0)
         # if not self._check_code(code, 'set_servo_angle'):
         #     return
         
-        # # user_input = input()
-        # # if user_input == 'q':
 
-        # code = self._arm.set_servo_angle(angle=[55.8, -48.2, 14.8, 86.1, 60.2, 58.7], speed=20,
-        #                                          mvacc=self._angle_acc, wait=False, radius=20.0)
+#  def run(self):
+        # try:
+        #     while self.is_alive:
+        #         # Joint Motion
+        #         if self.state == 'icecreaming':
+        #             # --------------icecream start--------------------
+        #             try:
+        #                 self.clientSocket.send('icecream_start'.encode('utf-8'))
+        #             except:
+        #                 print('socket error')
+        #             time.sleep(int(self.order_msg['makeReq']['latency']))
+
+        #             self.motion_home()
+        #             while True:
+        #                 if self.order_msg['makeReq']['latency'] in ['go', 'stop']:
+        #                     break
+        #                 time.sleep(0.2)
+        #             if self.order_msg['makeReq']['latency'] in ['go']:
+        #                 self.motion_grab_capsule()
+        #                 if self.order_msg['makeReq']['sealing'] in ['yes']:
+        #                     self.motion_check_sealing()
+        #                     try:
+        #                         self.clientSocket.send('sealing_check'.encode('utf-8'))
+        #                     except:
+        #                         pass
+        #                     count = 0
+        #                     while True:
+        #                         # if sealing_check request arrives or 5sec past
+        #                         if self.order_msg['makeReq']['sealing'] in ['go', 'stop'] or count >= 5:
+        #                             print(self.order_msg['makeReq']['sealing'])
+        #                             break
+        #                         time.sleep(0.2)
+        #                         count += 0.2
+        #                 if self.order_msg['makeReq']['sealing'] in ['go'] or self.order_msg['makeReq']['sealing'] not in ['yes', 'stop']:
+        #                     #print('sealing_pass')
+        #                     self.motion_place_capsule()
+        #                     self.motion_grab_cup()
+        #                     self.motion_topping()
+        #                     self.motion_make_icecream()
+        #                     self.motion_serve()
+        #                     self.motion_trash_capsule()
+        #                     self.motion_home()
+        #                     print('icecream finish')
+        #                     while True:
+        #                         try:
+        #                             self.clientSocket.send('icecream_finish'.encode('utf-8'))
+        #                             break
+        #                         except:
+        #                             time.sleep(0.2)
+        #                             print('socket_error')
+        #                 else:
+        #                     self.motion_place_fail_capsule()
+        #                     self.motion_home()
+        #                     self.clientSocket.send('icecream_cancel'.encode('utf-8'))
+        #                     self.order_msg['makeReq']['sealing'] = ''
+        #             else:
+        #                 while True:
+        #                     try:
+        #                         self.clientSocket.send('icecream_cancel'.encode('utf-8'))
+        #                         break
+        #                     except:
+        #                         print('socket error')
+        #                 self.order_msg['makeReq']['latency'] = 0
+        #             self.state = 'ready'
+
+        #         elif self.state == 'test':
+        #             try:
+        #                 self.clientSocket.send('test_start'.encode('utf-8'))
+        #             except:
+        #                 print('socket error')
+        #             # self.motion_home()
+        #             # self.motion_grab_cup()
+        #             # self.motion_serve()
+
+        #         else:
+        #             pass
+
+        #         # self.state = 'ready'
+        # except Exception as e:
+        #     self.pprint('MainException: {}'.format(e))
+        # self.alive = False
+        # self._arm.release_error_warn_changed_callback(self._error_warn_changed_callback)
+        # self._arm.release_state_changed_callback(self._state_changed_callback)
+        # if hasattr(self._arm, 'release_count_changed_callback'):
+        #     self._arm.release_count_changed_callback(self._count_changed_callback)
+
+
+
+
+
+# def motion_trash_capsule(self):
+#         try:
+#             self.clientSocket.send('motion_trash_start'.encode('utf-8'))
+#         except:
+#             print('socket error')
+
+        # # 홈에서 템핑가는 토핑밑
+        # self._angle_speed = 150
+        # self._angle_acc = 300
+        # code = self._arm.set_servo_angle(angle=[51.2, -8.7, 13.8, 95.0, 86.0, 17.0], speed=self._angle_speed,
+        #                                  mvacc=self._angle_acc, wait=False, radius=50.0)
         # if not self._check_code(code, 'set_servo_angle'):
         #     return
 
-        # self.motion_grab_cup()
-
-
-        # self.motion_make_icecream()
-
-
-    
-        # self.motion_home()
-
-        # #실링체크 웨이포인트
-        # code = self._arm.set_servo_angle(angle=[145, -27, 13.4, 95.7, 80.1, 156.4], speed=self._angle_speed,
-        #                                     mvacc=self._angle_acc, wait=False, radius=30.0)
+        # # 홈에서 템핑가는 토핑밑에서 올라옴
+        # code = self._arm.set_servo_angle(angle=[-16.2, -19.3, 42.7, 82.0, 89.1, 55.0], speed=self._angle_speed,
+        #                                  mvacc=self._angle_acc, wait=True, radius=0.0)
         # if not self._check_code(code, 'set_servo_angle'):
         #     return
 
-        # #실링체크
-        # code = self._arm.set_servo_angle(angle=[179.1, -85.6, 13.1, 182.6, -3.2, 180], speed=self._angle_speed,
-        #                                     mvacc=self._angle_acc, wait=True, radius=30.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #     return
-        
-        # self.motion_place_capsule()
-
-        
-
-        
-
-        #  def motion_make_icecream(self):
-        # 아이스크림 위치
-        # code = self._arm.set_position(*[243.1, 134.7, 300, -59.6, 88.5, 29.5], speed=self._tcp_speed,
-        #                                 mvacc=self._tcp_acc, radius=20.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #     return 
-        
-        # code = self._arm.set_position(z=65, radius=0, speed=20, mvacc=self._tcp_acc, relative=True,
-        #                                 wait=False)
-        # if not self._check_code(code, 'set_position'):
-        #     return
-
-        # self.motion_grab_cup()
-
-
-
-        # self.motion_make_icecream()
-        # # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
-
-    
-        # self.motion_Dondurma()
-
-        # 끊어서 가기
-        #def motion_safemove(self, mode, goal, N):
-
-        # get_position :(0, [-189.92067, -1.2e-05, 306.132355, 76.097733, 89.999981, -103.902287]) 
-        # get_position(radian) :(0, [-189.92067, -1.2e-05, 306.132355, 1.328156, 1.570796, -1.813437]) 
-        # get_servo_angle :(0, [180.00002, -24.999982, 14.999978, 180.00002, 50.000021, 0.0, 0.0])
-
-
-        # get_position :(0, [-2e-06, -189.92067, 306.132355, 76.097733, 89.999981, -13.902305]) 
-        # get_position(radian) :(0, [-2e-06, -189.92067, 306.132355, 1.328156, 1.570796, -0.242641]) 
-        # get_servo_angle :(0, [270.000001, -24.999982, 14.999978, 180.00002, 50.000021, 0.0, 0.0])
-
-        self.motion_home()
-
-        mode = 2
-        N = 10
-
-        goal = [270.000001, -24.999982, 14.999978, 180.00002, 50.000021, 0.0]
-
-        self._angle_speed = 30
-        self._angle_acc = 500
-
-        if mode == 1:
-            data = arm.get_position()
-            extracted_list = data[1]
-            pre_position = extracted_list[:6]
-
-            linspace_lists = [np.linspace(start, end, N) for start, end in zip(pre_position, goal)]
-
-            # 결과 출력
-            for i in range(N):
-                step = [lst[i] for lst in linspace_lists]
-
-                if self.invaded == 0:
-                    code = self._arm.set_position(*step, speed=self._tcp_speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
-                    if not self._check_code(code, 'set_position'):
-                        return 
-                    # time.sleep(0.1)
-                    print("position: "+str(self.invaded))
-                elif self.invaded == 1:
-                    while True:
-                        time.sleep(0.1)
-                        if self.invaded == 0:
-                            break
-            
-        elif mode == 2:
-            data = arm.get_servo_angle()
-            extracted_list = data[1]
-            pre_angle = extracted_list[:6]
-
-            linspace_lists = [np.linspace(start, end, N) for start, end in zip(pre_angle, goal)]
-
-            time.sleep(5)
-            # 결과 출력
-            for i in range(N):
-                step = [lst[i] for lst in linspace_lists]
-                print("motion: "+str(self.invaded))
-
-                if self.invaded == 0:
-                    code = self._arm.set_servo_angle(angle=step, speed=self._angle_speed, mvacc=self._angle_acc, radius=0.0, wait=False)
-                    if not self._check_code(code, 'set_servo_angle'):
-                        return
-                    # time.sleep(0.1)
-                    print("motion: "+str(self.invaded))
-                elif self.invaded == 1:
-                    while True:
-                        time.sleep(0.1)
-                        if self.invaded == 0:
-                            break
-     
         '''
-        self.motion_home()
-        time.sleep(10)
-
-        # motion_grab_capsule
-        # 컵 추출 준비
-        code = self._arm.set_cgpio_analog(0, 5)
-        if not self._check_code(code, 'set_cgpio_analog'):
-            return
-        code = self._arm.set_cgpio_analog(1, 5)
-        if not self._check_code(code, 'set_cgpio_analog'):
-            return
-        
-        # Joint Motion
-        self._angle_speed = 100
+        # 탬핑에서부터 버리는 동작
+        self._angle_speed = 60
         self._angle_acc = 100
-
-        self._tcp_speed = 100
-        self._tcp_acc = 1000
-
-        code = self._arm.stop_lite6_gripper()
-        if not self._check_code(code, 'stop_lite6_gripper'):
-            return
-        time.sleep(0.5)
-
-        code = self._arm.open_lite6_gripper()
-        if not self._check_code(code, 'open_lite6_gripper'):
-            return
-        time.sleep(1)
-
-
-        # user_input = input()
-        self.check_capsule_position()
-        
-
-        # 지그 가는 웨이포인트
-        code = self._arm.set_servo_angle(angle=[176, 27, 29.9, 76.8, 92, 0], speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=True, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[-10.7, -2.4, 53.5, 50.4, 78.1, 63.0], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=False, radius=10.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
 
-
-        if self.capsule_position == 1:
-        # if user_input == '1':
-            # A지그 가는 웨이포인트
-            code = self._arm.set_servo_angle(angle=[179.5, 28.3, 31.4, 113.1, 91.5, 0], speed=self._angle_speed,
-                                                mvacc=self._angle_acc, wait=False, radius=20.0)
-            if not self._check_code(code, 'set_servo_angle'):
-                return
-
-            code = self._arm.set_position(*self.position_jig_A_grab, speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return
-
-        elif self.capsule_position == 2:
-        # elif user_input == '2':
-            # B 지그 캡슐 그랩
-            code = self._arm.set_position(*self.position_jig_B_grab, speed=self._tcp_speed-50,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return 
-
-        elif self.capsule_position == 3:
-        # elif user_input == '3':
-            #C 지금 잡으러가는 웨이포인트
-            code = self._arm.set_servo_angle(angle=[182.6, 25.3, 27.2, 55.7, 91.5, 0], speed=self._angle_speed,
-                                                 mvacc=self._angle_acc, wait=False, radius=20.0)
-            if not self._check_code(code, 'set_servo_angle'):
-                return
-
-            code = self._arm.set_position(*self.position_jig_C_grab, speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return
-
-
-        code = self._arm.close_lite6_gripper()
-        if not self._check_code(code, 'close_lite6_gri1pper'):
-            return
-        time.sleep(1)
-
-        code = self._arm.set_position(z=100, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-                                        wait=False)
+        # 뒤집어서 쓰래기통 위        code = self._arm.set_position(*[ 0-(250/2), -50 - (40/2) , 265 , 180, 0, 90], speed=20,
+                                        mvacc=self._tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
-        #실링체크 웨이포인트
-        code = self._arm.set_servo_angle(angle=[145, -27, 13.4, 95.7, 80.1, 156.4], speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=False, radius=30.0)
+        code = self._arm.set_position(*[ -50-(250/2), 20, 265 , 180, 0, 90], speed=20,
+                                        mvacc=self._tcp_acc, radius=900.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
+        self._angle_speed = 160
+        self._angle_acc = 1000
+        code = self._arm.set_servo_angle(angle=[18.0, 11.2, 40.4, 90.4, 58.7, -148.8], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=True, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
-
-        # motion_check_sealing()
-        print('sealing check')
-        self._angle_speed = 100
-        self._angle_acc = 200
-        # code = self._arm.set_position(*self.position_sealing_check, speed=self._tcp_speed,
-        #                                 mvacc=self._tcp_acc, radius=0.0, wait=True)
-        code = self._arm.set_servo_angle(angle=[179.1, -85.6, 13.1, 182.6, -3.2, 180], speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=True, radius=30.0)
+        
+        # 터는 동작
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        # time.sleep(2)
+        code = self._arm.set_servo_angle(angle=[25.2, 15.2, 42.7, 83.2, 35.0, -139.8], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=False, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
+        code = self._arm.set_servo_angle(angle=[18.0, 11.2, 40.4, 90.4, 58.7, -148.8], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        code = self._arm.set_servo_angle(angle=[25.2, 15.2, 42.7, 83.2, 35.0, -139.8], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        code = self._arm.stop_lite6_gripper()
+        if not self._check_code(code, 'stop_lite6_gripper'):
+            return
 
-        self.check_sealing()
-
-        if self.detect_sealing== 1:
-            self.motion_place_capsule()
-
-        elif self.detect_sealing == 2:
-            self.motion_place_fail_capsule()
-
-
-        ''' 
-
-     
-
-
-
-
-        ''' 토핑 조합
-        empty = 0
-        oreo = 1
-        chocoball = 2
-        cereal = 3
-        oreo chocoball = 4
-        oreo cereal = 5
-        chocoball cereal = 6
-        oreo chocoball cereal = 7
+        # 털고 복귀하는 토핑 밑
+        self._angle_speed = 120
+        self._angle_acc = 1000
+        code = self._arm.set_servo_angle(angle=[28.3, -9.0, 12.6, 85.9, 78.5, 20.0], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=False, radius=30.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        # 홈 위치
+        code = self._arm.set_servo_angle(angle=[179.2, -42.1, 7.4, 186.7, 41.5, -1.6], speed=self._angle_speed,
+                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
         '''
-
-        '''
-
-            if self.order_msg['makeReq']['jigNum'] == 'C':
-                code = self._arm.set_position(*self.position_topping_C, speed=self._tcp_speed,
-                                              mvacc=self._tcp_acc, radius=0.0, wait=True)
-                if not self._check_code(code, 'set_position'):
-                    return
-                code = self._arm.set_cgpio_digital(2, 1, delay_sec=0)
-                if not self._check_code(code, 'set_cgpio_digital'):
-                    return
-                code = self._arm.set_position(z=20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-                                              wait=False)
-                if not self._check_code(code, 'set_position'):
-                    return
-                code = self._arm.set_pause_time(int(self.order_msg['makeReq']['toppingAmount']) - 3)
-                if not self._check_code(code, 'set_pause_time'):
-                    return
-                code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
-                if not self._check_code(code, 'set_cgpio_digital'):
-                    return
-                code = self._arm.set_pause_time(3)
-                if not self._check_code(code, 'set_pause_time'):
-                    return
-                code = self._arm.set_cgpio_digital(2, 0, delay_sec=0)
-                if not self._check_code(code, 'set_cgpio_digital'):
-                    return
-
-                code = self._arm.set_position(z=-20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc,
-                                              relative=True, wait=False)
-                if not self._check_code(code, 'set_position'):
-                    return
-
-            elif self.order_msg['makeReq']['jigNum'] in ['B']:
-                code = self._arm.set_servo_angle(angle=[55.8, -48.2, 14.8, 86.1, 60.2, 58.7], speed=self._angle_speed,
-                                                 mvacc=self._angle_acc, wait=False, radius=20.0)
-                if not self._check_code(code, 'set_servo_angle'):
-                    return
-
-
-                # code = self._arm.set_servo_angle(angle=[87.5, -48.2, 13.5, 125.1, 44.5, 46.2], speed=self._angle_speed,
-                #                                 mvacc=self._angle_acc, wait=True, radius=0.0)
-                # if not self._check_code(code, 'set_servo_angle'):
-                #    return
-
-                code = self._arm.set_servo_angle(angle=self.position_topping_B, speed=self._angle_speed,
-                                                 mvacc=self._angle_acc, wait=True, radius=0.0)
-                if not self._check_code(code, 'set_servo_angle'):
-                    return
-                code = self._arm.set_cgpio_digital(1, 1, delay_sec=0)
-                if not self._check_code(code, 'set_cgpio_digital'):
-                    return
-                code = self._arm.set_position(z=20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-                                              wait=True)
-                if not self._check_code(code, 'set_position'):
-                    return
-                code = self._arm.set_pause_time(int(self.order_msg['makeReq']['toppingAmount']) - 4)
-                if not self._check_code(code, 'set_pause_time'):
-                    return
-                code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
-                if not self._check_code(code, 'set_cgpio_digital'):
-                    return
-                code = self._arm.set_pause_time(4)
-                if not self._check_code(code, 'set_pause_time'):
-                    return
-                code = self._arm.set_cgpio_digital(1, 0, delay_sec=0)
-                if not self._check_code(code, 'set_cgpio_digital'):
-                    return
-                code = self._arm.set_position(z=-20, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc,
-                                              relative=True, wait=False)
-                if not self._check_code(code, 'set_position'):
-                    return
-                code = self._arm.set_servo_angle(angle=[87.5, -48.2, 13.5, 125.1, 44.5, 46.2], speed=self._angle_speed,
-                                                 mvacc=self._angle_acc, wait=False, radius=10.0)
-                if not self._check_code(code, 'set_servo_angle'):
-                    return
-                code = self._arm.set_position(*[43.6, 137.9, 350.1, -92.8, 87.5, 5.3], speed=self._tcp_speed,
-                                              mvacc=self._tcp_acc, radius=10.0, wait=False)
-                if not self._check_code(code, 'set_position'):
-                    return
-
-            elif self.order_msg['makeReq']['jigNum'] == 'A':
-                code = self._arm.set_position(*self.position_topping_A, speed=self._tcp_speed,
-                                              mvacc=self._tcp_acc, radius=0.0, wait=True)
-                if not self._check_code(code, 'set_position'):
-                    return
-                code = self._arm.set_cgpio_digital(0, 1, delay_sec=0)
-                if not self._check_code(code, 'set_cgpio_digital'):
-                    return
-                code = self._arm.set_pause_time(int(self.order_msg['makeReq']['toppingAmount']) - 1)
-                if not self._check_code(code, 'set_pause_time'):
-                    return
-                code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
-                if not self._check_code(code, 'set_cgpio_digital'):
-                    return
-                code = self._arm.set_pause_time(1)
-                if not self._check_code(code, 'set_pause_time'):
-                    return
-                code = self._arm.set_cgpio_digital(0, 0, delay_sec=0)
-                if not self._check_code(code, 'set_cgpio_digital'):
-                    return
-                code = self._arm.set_servo_angle(angle=[130.0, -33.1, 12.5, 194.3, 51.0, 0.0], speed=self._angle_speed,
-                                                 mvacc=self._angle_acc, wait=True, radius=0.0)
-                if not self._check_code(code, 'set_servo_angle'):
-                    return
-                code = self._arm.set_position(*[-38.2, 132.2, 333.9, -112.9, 86.3, -6.6], speed=self._tcp_speed,
-                                              mvacc=self._tcp_acc, radius=10.0, wait=False)
-                if not self._check_code(code, 'set_position'):
-                    return
-                code = self._arm.set_position(*[43.6, 137.9, 350.1, -92.8, 87.5, 5.3], speed=self._tcp_speed,
-                                              mvacc=self._tcp_acc, radius=10.0, wait=False)
-                if not self._check_code(code, 'set_position'):
-                    return
-            # code = self._arm.set_position(*[165.1, 162.9, 362.5, -31.7, 86.6, 9.5], speed=self._tcp_speed,
-            #                              mvacc=self._tcp_acc, radius=0.0, wait=True)
-            # if not self._check_code(code, 'set_position'):
-            #    return
-            code = self._arm.set_position(*self.position_icecream_with_topping, speed=self._tcp_speed,
-                                          mvacc=self._tcp_acc, radius=0.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return
-        else:
-            # code = self._arm.set_servo_angle(angle=[45.8, -17.9, 33.5, 186.9, 41.8, -7.2], speed=self._angle_speed,
-            #                                 mvacc=self._angle_acc, wait=True, radius=0.0)
-            # if not self._check_code(code, 'set_servo_angle'):
-            #    return
-            code = self._arm.set_cgpio_digital(3, 1, delay_sec=0)
-            if not self._check_code(code, 'set_cgpio_digital'):
-                return
-            code = self._arm.set_servo_angle(angle=self.position_icecream_no_topping, speed=self._angle_speed,
-                                             mvacc=self._angle_acc, wait=True, radius=0.0)
-            if not self._check_code(code, 'set_servo_angle'):
-                return
-        try:
-            self.clientSocket.send('motion_topping_finish'.encode('utf-8'))
-        except:
-            print('socket error')
-
-        time.sleep(0.5)
-
-        '''
-
-
 
 
         # # self.motion_serve()
@@ -2803,26 +5060,9 @@ class RobotMain(object):
         # self._tcp_acc = 1000
 
 
-
-        # self.motion_trash_capsule()
-
-        # self.motion_home()
-
-
-
-
-
-
-
-
-
         # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
         
         # self.motion_grap_squeegee()
-
-        
-        
-
 
 
         # 하이파이브 모션
@@ -2900,42 +5140,59 @@ class RobotMain(object):
         # if not self._check_code(code, 'set_servo_angle'):
         #     return
 
-    def stop_task(self):
-        while True:
-            command = input("Enter 'stop' to pause, 'start' to resume: ")
-            if command == '1':
-                # self.invaded = 1
-                self._arm.set_state(3)
-            elif command == '2':
-                # self.invaded = 0
-                self._arm.set_state(0)
-                print("stop_task: "+str(self.invaded))
+    # def stop_task(self):
+    #     while True:
+    #         command = input("Enter 'stop' to pause, 'start' to resume: ")
+    #         if command == '1':
+    #             # self.invaded = 1
+    #             self._arm.set_state(3)
+    #         elif command == '2':
+    #             # self.invaded = 0
+    #             self._arm.set_state(0)
+    #             print("stop_task: "+str(self.invaded))
 
 
 if __name__ == '__main__':
     RobotMain.pprint('xArm-Python-SDK Version:{}'.format(version.__version__))
     arm = XArmAPI('192.168.1.185', baud_checkset=False)
     robot_main = RobotMain(arm)
+
     # target에 함수 객체를 넘겨줌
-    robot_thread = threading.Thread(target=robot_main.test_main)
-    stop_thread = threading.Thread(target=robot_main.stop_task)
+    # robot_thread = Thread(target=robot_main.test_main)
 
     # 스레드 시작
-    robot_thread.start()
-    stop_thread.start()
+    # robot_thread.start()
+
+    
 
     # 메인 쓰레드와 stop 쓰레드가 종료되지 않도록 대기
-    robot_thread.join()
-    stop_thread.join()
+    # robot_thread.join()
     
 
 
-    # socket_thread = Thread(target=robot_main.socket_connect)
+    # socket_thread = Thread(target=robot_main.socket1_connect)
     # socket_thread.start()
     # print('socket_thread start')
+    
+
     # joint_state_thread = threading.Thread(target=robot_main.joint_state)
     # joint_state_thread.start()
     # print('joint_state_thread_started')
-    # run_thread = threading.Thread(target=robot_main.run)
-    # run_thread.start()
-    # print('run_thread_started')
+    
+
+    run_thread = threading.Thread(target=robot_main.test_main)
+    run_thread.start()
+    print('robot_thread_start')
+    
+
+    # warning_thread = Thread(target=robot_main.vision)
+    # warning_thread.start()
+    # print('warning_thread_start')
+    
+
+    # socket_thread.join()
+    # joint_state_thread.join()
+    run_thread.join()
+    # warning_thread.join()
+
+    

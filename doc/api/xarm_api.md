@@ -196,7 +196,7 @@ xArm-Python-SDK API Documentation (V1.13.30): class XArmAPI in module xarm.wrapp
 > The last used servo angles, default value of parameter angle of interface set_servo_angle  
 > Note:  
 > &ensp;&ensp;&ensp;&ensp;1. If self.default_is_radian is True, the returned value is in radians  
-> &ensp;&ensp;&ensp;&ensp;2. self.set_servo_angle(servo_id=1, angle=75) < == > self.set_servo_angle(angle=[75] + self.last_used_angles[1:])  
+> &ensp;&ensp;&ensp;&ensp;2. self._angle(servo_id=1, angle=75) < == > self.set_servo_angle(angle=[75] + self.last_used_angles[1:])  
 > &ensp;&ensp;&ensp;&ensp;3. self.set_servo_angle(servo_id=5, angle=30) < == > self.set_servo_angle(angle=self.last_used_angles[:4] + [30] + self.last_used_angles[5:])  
 >   
 > :return: [angle1(° or rad), angle2(° or rad), ..., angle7(° or rad)]  
