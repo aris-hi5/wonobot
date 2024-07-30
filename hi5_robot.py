@@ -87,6 +87,8 @@ class RobotMain(Node):
         self.topping = None
         self.topping_list = None
 
+        self.tracking_position =[]
+
         # self.position_home = [180, -42.1, 7.4, 186.7, 41.5, 0] #angle
  
         self.position_sealing_check = [-136.8, 71.5, 307.6, 69.6, -73.9, -59] #Linear
@@ -2437,6 +2439,301 @@ class RobotMain(Node):
 
         # Release the webcam and destroy all windows
         
+    def trash_position(self):
+        import logging
+
+        # YOLOv8 모델 로드
+        model = YOLO('newjeans.pt')  # 모델 경로를 설정하세요.
+
+        # 모델을 GPU로 이동
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if torch.cuda.is_available():
+            model.to(device)
+
+        # GPU 사용 여부 출력
+        print(f'Using device: {device}')
+
+        logging.getLogger('torch').setLevel(logging.ERROR)
+
+        # 캘리브레이션 데이터를 사용하여 카메라 매트릭스와 왜곡 계수를 설정
+        camera_matrix = np.array([[474.51901407, 0, 302.47811758],
+                                [0, 474.18970657, 250.66191453],
+                                [0, 0, 1]])
+        dist_coeffs = np.array([[-0.06544764, -0.07654065, -0.00761827, -0.00279316, 0.08062307]])
+
+        # 1 픽셀당 1.55145mm 단위 변환 비율
+        pixel_to_mm_ratio = 1.55145
+
+        # 로봇 좌표계의 중앙값 (픽셀 단위)
+        robot_origin_x = 295
+        robot_origin_y = 184
+
+        # 비디오 캡처 초기화 (카메라 ID는 0으로 설정, 필요 시 변경 가능)
+        cap = cv2.VideoCapture(2)
+
+        # 트랙바 콜백 함수 (아무 동작도 하지 않음)
+        def nothing(x):
+            pass
+
+        # 트랙바를 위한 윈도우 생성
+        cv2.namedWindow('Detection Results')
+        cv2.createTrackbar('Confidence', 'Detection Results', 50, 100, nothing)  # 기본값 50, 범위 0-100
+
+        # 객체 좌표를 저장할 딕셔너리
+        object_coords = {}
+
+        # 유사한 객체를 인식할 때 사용할 거리 임계값
+        similarity_threshold = 50
+
+        # 제어 모드 플래그
+        control_mode = False
+
+        def find_similar_object(center_x, center_y, label, object_coords, threshold):
+            for obj_id, coords in object_coords.items():
+                if obj_id.startswith(label) and coords:
+                    avg_x = sum([coord[0] for coord in coords]) / len(coords)
+                    avg_y = sum([coord[1] for coord in coords]) / len(coords)
+                    distance = np.sqrt((avg_x - center_x) ** 2 + (avg_y - center_y) ** 2)
+                    if distance < threshold:
+                        return obj_id
+            return None
+
+        flag = 1
+        while True:
+            # 트랙바에서 현재 Confidence 값 가져오기
+            confidence_threshold = cv2.getTrackbarPos('Confidence', 'Detection Results') / 100.0
+
+            # 프레임 캡처
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # 왜곡 보정
+            undistorted_frame = cv2.undistort(frame, camera_matrix, dist_coeffs)
+
+            if not control_mode:
+                # 객체 검출 수행
+                results = model(undistorted_frame, conf=confidence_threshold)
+                
+                # 바운딩 박스 그리기
+                for result in results:
+                    boxes = result.boxes
+                    for box in boxes:
+                        cls_id = int(box.cls)
+                        label = model.names[cls_id]
+                        confidence = box.conf.item()  # 신뢰도 추출
+
+                        # 'cup' 및 'star' 객체만 추적
+                        if label in ['side_cup', 'side_star'] and confidence >= confidence_threshold:
+                            bbox = box.xyxy[0].tolist()  # 바운딩 박스를 리스트로 변환
+                            x1, y1, x2, y2 = map(int, bbox)
+                            center_x = (x1 + x2) / 2
+                            center_y = (y1 + y2) / 2
+
+                            cv2.rectangle(undistorted_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+                            # 텍스트 위치 계산
+                            text = f'{label} {confidence:.2f}'
+                            (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
+
+                            # 텍스트가 바운딩 박스 내부, 오른쪽 상단에 표시되도록 위치 조정
+                            text_x = x2 - text_width if x2 - text_width > 0 else x1
+                            text_y = y1 - 2 if y1 - 2 > text_height else y1 + text_height + 2
+
+                            # 텍스트 배경 상자 그리기
+                            cv2.rectangle(undistorted_frame, (text_x, text_y - text_height - baseline), (text_x + text_width, text_y + baseline), (0, 255, 0), cv2.FILLED)
+
+                            # 텍스트 그리기
+                            cv2.putText(undistorted_frame, text, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+
+                            # 유사한 객체 찾기
+                            similar_object_id = find_similar_object(center_x, center_y, label, object_coords, similarity_threshold)
+                            
+                            if similar_object_id:
+                                object_id = similar_object_id
+                            else:
+                                object_id = f'{label}_{len(object_coords)}'
+                                object_coords[object_id] = []
+                                print(f"새 객체 발견: {object_id}")
+
+                            # 좌표 추가, 20개까지만 저장
+                            if len(object_coords[object_id]) < 20:
+                                object_coords[object_id].append((center_x, center_y))
+                                print(f"{object_id}의 좌표 추가됨: ({center_x}, {center_y})")
+                                print(f"{object_id}의 좌표 개수: {len(object_coords[object_id])}")
+
+                # 모든 객체가 20개의 좌표를 수집하면 제어 모드로 전환
+                if all(len(coords) >= 20 for coords in object_coords.values()):
+                    control_mode = True
+                    print("제어 모드로 전환")
+
+            else:
+                # 모든 객체의 평균 좌표 계산
+                avg_coords = {}
+                for object_id, coords in object_coords.items():
+                    avg_x = sum([coord[0] for coord in coords]) / 20
+                    avg_y = sum([coord[1] for coord in coords]) / 20
+                    avg_coords[object_id] = (avg_x, avg_y)
+
+                # 카메라 화면의 중심 좌표
+                center_x_cam, center_y_cam = 320, 240
+
+                # 객체들을 중심으로부터의 거리 순으로 정렬 (가장 먼 객체부터)
+                sorted_objects = sorted(avg_coords.items(), key=lambda item: np.sqrt((item[1][0] - center_x_cam) ** 2 + (item[1][1] - center_y_cam) ** 2), reverse=True)
+
+                # 모든 객체 ID와 거리 순서대로 번호 표시
+                for idx, (object_id, (avg_x, avg_y)) in enumerate(sorted_objects, start=1):
+                    distance = np.sqrt((avg_x - center_x_cam) ** 2 + (avg_y - center_y_cam) ** 2)
+                    display_text = f'{idx}. {object_id} ({distance:.2f} px)'
+                    cv2.putText(undistorted_frame, display_text, (10, 30 + 30 * idx), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+
+                # 가장 먼 객체부터 순차적으로 제어
+                for object_id, (avg_x, avg_y) in sorted_objects:
+                    print(f"{object_id}의 평균 좌표 계산됨: ({avg_x:.2f}, {avg_y:.2f})")
+
+                    # 중심으로부터의 거리 계산
+                    distance = np.sqrt((avg_x - center_x_cam) ** 2 + (avg_y - center_y_cam) ** 2)
+                    print(f"{object_id}의 중심으로부터 거리 계산됨: {distance:.2f} 픽셀")
+
+                    # 픽셀 좌표를 MM 좌표로 변환
+                    robot_coords_mm_x = (avg_x - robot_origin_x) * pixel_to_mm_ratio * -1
+                    robot_coords_mm_y = (avg_y - robot_origin_y) * pixel_to_mm_ratio
+                    print(f"{object_id}의 로봇 좌표 계산됨: ({robot_coords_mm_x:.2f} mm, {robot_coords_mm_y:.2f} mm)")
+
+                    if flag:
+                        self.tracking_position.append(robot_coords_mm_x)
+                        self.tracking_position.append(robot_coords_mm_y)
+                        flag = 0
+
+                    self.tracking_position = [robot_coords_mm_x, robot_coords_mm_y]
+                    print(f'\n\n               카메라         \n\n\n{self.tracking_position[0]} , {self.tracking_position[1]}\n\n\n\n\n')
+
+                    # 로봇 제어 코드 실행
+                    # 여기에 로봇 제어 코드를 추가하세요
+                    print(f"로봇 제어 코드 실행: {object_id}")
+
+                # 모든 객체의 제어가 완료되면 객체 리스트 초기화 및 인식 모드로 전환
+                object_coords.clear()
+                control_mode = False
+                print("모든 객체 제어 완료. 인식 모드로 전환.")
+
+            # 결과가 포함된 이미지 표시
+            cv2.imshow('Detection Results', undistorted_frame)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+
+
+    def trash_angle(self):
+        # 세그멘테이션 모델 로드
+        model = YOLO('newjeans.pt')  # 세그멘테이션 모델 경로를 설정하세요.
+
+        # 모델을 GPU로 이동
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if torch.cuda.is_available():
+            model.to(device)
+
+        # GPU 사용 여부 출력
+        print(f'Using device: {device}')
+
+        # 캘리브레이션 데이터를 사용하여 카메라 매트릭스와 왜곡 계수를 설정
+        camera_matrix = np.array([[474.51901407, 0, 302.47811758],
+                                [0, 474.18970657, 250.66191453],
+                                [0, 0, 1]])
+        dist_coeffs = np.array([[-0.06544764, -0.07654065, -0.00761827, -0.00279316, 0.08062307]])
+
+        # 비디오 캡처 초기화 (카메라 ID는 0으로 설정, 필요 시 변경 가능)
+        cap = cv2.VideoCapture(2)
+
+        # 트랙바 콜백 함수 (아무 동작도 하지 않음)
+        def nothing(x):
+            pass
+
+        # 트랙바를 위한 윈도우 생성
+        cv2.namedWindow('Segmentation Results')
+        cv2.createTrackbar('Confidence', 'Segmentation Results', 50, 100, nothing)  # 기본값 50, 범위 0-100
+
+        def calculate_angle(pt1, pt2):
+            angle = np.arctan2(pt2[1] - pt1[1], pt2[0] - pt1[0]) * 180.0 / np.pi
+            return angle
+
+        while True:
+            # 트랙바에서 현재 Confidence 값 가져오기
+            confidence_threshold = cv2.getTrackbarPos('Confidence', 'Segmentation Results') / 100.0
+
+            # 프레임 캡처
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            # 왜곡 보정
+            undistorted_frame = cv2.undistort(frame, camera_matrix, dist_coeffs)
+
+            # 객체 검출 수행
+            results = model(undistorted_frame, conf=confidence_threshold)
+            
+            for result in results:
+                masks = result.masks  # 세그멘테이션 마스크 가져오기
+                for mask in masks.data.cpu().numpy():  # CPU 메모리로 복사한 후 numpy 배열로 변환
+                    mask = mask.astype(np.uint8)  # numpy 배열을 uint8로 변환
+                    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    
+                    # 디버깅: 세그멘테이션 마스크 표시
+                    debug_mask = cv2.cvtColor(mask * 255, cv2.COLOR_GRAY2BGR)
+                    cv2.imshow('Debug Mask', debug_mask)
+
+                    if contours:
+                        cnt = max(contours, key=cv2.contourArea)
+                        rect = cv2.minAreaRect(cnt)
+                        box = cv2.boxPoints(rect)
+                        box = np.int0(box)
+                        cv2.drawContours(undistorted_frame, [box], 0, (0, 255, 0), 2)
+
+                        # 중심점 계산
+                        M = cv2.moments(cnt)
+                        if M["m00"] != 0:
+                            center_x = int(M["m10"] / M["m00"])
+                            center_y = int(M["m01"] / M["m00"])
+                        else:
+                            center_x, center_y = 0, 0
+
+                        center_point = (center_x, center_y)
+                        cv2.circle(undistorted_frame, center_point, 5, (255, 0, 0), -1)
+
+                        # 밑면의 중심점 찾기
+                        bottom_points = sorted(box, key=lambda pt: pt[1], reverse=True)[:2]
+                        bottom_center_x = int((bottom_points[0][0] + bottom_points[1][0]) / 2)
+                        bottom_center_y = int((bottom_points[0][1] + bottom_points[1][1]) / 2)
+                        bottom_center_point = (bottom_center_x, bottom_center_y)
+
+                        cv2.circle(undistorted_frame, bottom_center_point, 5, (0, 0, 255), -1)
+                        cv2.line(undistorted_frame, center_point, bottom_center_point, (0, 255, 255), 2)
+
+                        # 기울기 계산
+                        angle = calculate_angle(center_point, bottom_center_point)
+                        cv2.putText(undistorted_frame, f"Angle: {angle:.2f}", (center_x, center_y - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                        print(f"Detected angle: {angle:.2f}")
+
+                        # 세그멘테이션 마스크를 컬러로 변환
+                        colored_mask = np.zeros_like(undistorted_frame)
+                        colored_mask[mask == 1] = [0, 255, 0]  # Green color for the mask
+
+                        # 원본 이미지에 세그멘테이션 마스크 오버레이
+                        overlay = cv2.addWeighted(undistorted_frame, 0.7, colored_mask, 0.3, 0)
+
+                        # 결과가 포함된 이미지 표시
+                        cv2.imshow('Segmentation Results', overlay)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        cap.release()
+        cv2.destroyAllWindows()
 
 
     def vision(self):
@@ -4384,8 +4681,6 @@ class RobotMain(Node):
         # self.motion_comeback(3)
 
 
-        
-
 
         # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
         
@@ -4396,54 +4691,57 @@ class RobotMain(Node):
 
         # a = ((-160) - current_position[1])
 
-        # print(a)c
-
+        # print(a)
 
         # 우측 배드 초기 위치
-        # code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
-        #                                 mvacc=self._tcp_acc, radius=20.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #     return
+        code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=50,
+                                        mvacc=100, radius=20.0, wait=True)
+        if not self._check_code(code, 'set_position'):
+            return
         
 
-        # Obstacle = 50
-        # goal = []
-        # squeegee_size = [260, 200]
+        # goal = [-319.68, -130.56]
 
-        # flag = 1
-        # while True:
-        #     tuple_c = arm.get_position()
-        #     list_c = tuple_c[1]
-        #     current_position = list_c[:6]
+        flag = 1
 
-        #     a = ((0) - (squeegee_size[0]/2) - current_position[0])
+        
+        while True:
+            tuple_c = arm.get_position()
+            list_c = tuple_c[1]
+            current_position = list_c[:6]
 
-        #     b = ((-180) + (squeegee_size[1]/2) - current_position[1])
+            if len(self.tracking_position) == 2:
+                print(f'\n\n               로봇         \n\n\n{self.tracking_position[0]} , {self.tracking_position[1]}\n\n\n\n\n')
+
+
+                a = (self.tracking_position[0] - current_position[0])
+
+                b = (self.tracking_position[1] - current_position[1])
+                
+                if flag == 1:
+                    print('들어옴')
+                    code = self._arm.set_position(x=a,y=b, speed=50, relative=True,
+                                            mvacc=100, radius=0.0, wait=True)
+                    flag = 0
+                print(f'{a} , {b},  {(a > 1 or a < -1)}, {(b > 1 or b < -1)}')
+                time.sleep(0.5)
+
+                if (a > 1 or a < -1) or (b > 1 or b < -1):
+                    print(f'들어옴 {current_position[0]}        {a}')
+                    flag = 1
             
-        #     if flag == 1:
-        #         print('들어옴')
-        #         code = self._arm.set_position(x=a,y=b, speed=100, relative=True,
-        #                                 mvacc=self._tcp_acc, radius=20.0, wait=True)
-        #         flag = 0
-        #     print(f'{a} , {b},  {(a > 1 or a < -1)}, {(b > 1 or b < -1)}')
-        #     time.sleep(0.5)
-
-        #     if (a > 1 or a < -1) or (b > 1 or b < -1):
-        #         print(f'들어옴 {current_position[0]}        {a}')
-        #         flag = 1
-        
 
 
 
 
 
         #----------initial----------
-        self.sound = Hi5_Sound()
-        self.sound.sound_init()
+        # self.sound = Hi5_Sound()
+        # self.sound.sound_init()
 
-        self.sound.BGM_play()
+        # self.sound.BGM_play()
 
-        self.motion_home()
+        # self.motion_home()
 
 
         #----------제조 과정----------완
@@ -4526,9 +4824,9 @@ class RobotMain(Node):
 
         # self.motion_cleaning(0)
 
-        self.motion_cleaning(1, -319.68, -130.56, 42.6)
+        # self.motion_cleaning(1, -319.68, -130.56, 42.6)
 
-        self.motion_cleaning(1, 290.94, -100.48, 146.89)
+        # self.motion_cleaning(1, 290.94, -100.48, 146.89)
 
         # self.motion_home()
 
@@ -4799,11 +5097,16 @@ if __name__ == '__main__':
     # warning_thread = Thread(target=robot_main.vision)
     # warning_thread.start()
     # print('warning_thread_start')
+
+    trash_thread = Thread(target=robot_main.trash_position)
+    trash_thread.start()
+    print('warning_thread_start')
     
 
     # socket_thread.join()
     # joint_state_thread.join()
     run_thread.join()
+    trash_thread.join()
     # warning_thread.join()
 
     
