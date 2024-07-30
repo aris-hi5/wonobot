@@ -4096,6 +4096,11 @@ class RobotMain(Node):
             return
         
     def motion_dump_trash(self):
+        angle_speed = 50
+        angle_acc = 500
+        tcp_speed = 50
+        tcp_acc = 100
+
         time.sleep(3)
         tuple_c = arm.get_position()
         list_c = tuple_c[1]
@@ -4104,8 +4109,8 @@ class RobotMain(Node):
 
         if current_position[0] > 0:
             # left way point
-            code = self._arm.set_servo_angle(angle=[41.185925, -42.989596, 31.248774, -0.0, 74.238371, 176.185954], speed=40,
-                                            mvacc=self._angle_acc, wait=False, radius=0.0)
+            code = self._arm.set_servo_angle(angle=[41.185925, -42.989596, 31.248774, -0.0, 74.238371, 176.185954], speed=angle_speed,
+                                            mvacc=angle_acc, wait=False, radius=0.0)
             if not self._check_code(code, 'set_servo_angle'):
                 return
             # # left way point
@@ -4114,12 +4119,12 @@ class RobotMain(Node):
             # if not self._check_code(code, 'set_position'):
             #     return
             # middle
-            code = self._arm.set_position(*[3.7e-05, 120, 280.0, -180, 0, -90], speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            code = self._arm.set_position(*[3.7e-05, 120, 280.0, -180, 0, -90], speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=20.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return
-            code = self._arm.set_position(y=180, speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=True)
+            code = self._arm.set_position(y=180, speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=20.0, wait=True)
             if not self._check_code(code, 'set_position'):
                 return
             
@@ -4129,20 +4134,20 @@ class RobotMain(Node):
                 return
             time.sleep(1)
 
-            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=100,
-                                         mvacc=1000, wait=False, radius=0.0)
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
             if not self._check_code(code, 'set_servo_angle'):
                 return
-            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=100,
-                                         mvacc=1000, wait=False, radius=0.0)
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
             if not self._check_code(code, 'set_servo_angle'):
                 return
-            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=100,
-                                         mvacc=1000, wait=False, radius=0.0)
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
             if not self._check_code(code, 'set_servo_angle'):
                 return
-            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=100,
-                                         mvacc=1000, wait=False, radius=0.0)
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
             if not self._check_code(code, 'set_servo_angle'):
                 return
 
@@ -4152,15 +4157,15 @@ class RobotMain(Node):
             time.sleep(2)
 
             # right way point
-            code = self._arm.set_position(*[-80, 70, 350, 180, -0.0, -45], speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            code = self._arm.set_position(*[-80, 70, 350, 180, -0.0, -45], speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=20.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return
             
         else:
             # right way point
-            code = self._arm.set_servo_angle(angle=[138.814095, -42.989596, 31.248774, -0.0, 74.238371, 183.814085], speed=40,
-                                            mvacc=self._angle_acc, wait=False, radius=0.0)
+            code = self._arm.set_servo_angle(angle=[138.814095, -42.989596, 31.248774, -0.0, 74.238371, 183.814085], speed=angle_speed,
+                                            mvacc=angle_acc, wait=False, radius=0.0)
             if not self._check_code(code, 'set_servo_angle'):
                 return
             # # right way point
@@ -4169,12 +4174,12 @@ class RobotMain(Node):
             # if not self._check_code(code, 'set_position'):
             #     return
             # middle
-            code = self._arm.set_position(*[3.7e-05, 120, 280.0, -180, 0, -90], speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            code = self._arm.set_position(*[3.7e-05, 120, 280.0, -180, 0, -90], speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=20.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return
-            code = self._arm.set_position(y=180, speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=True)
+            code = self._arm.set_position(y=180, speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=20.0, wait=True)
             if not self._check_code(code, 'set_position'):
                 return
 
@@ -4183,20 +4188,20 @@ class RobotMain(Node):
                 return
             time.sleep(1)
 
-            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=100,
-                                         mvacc=1000, wait=False, radius=0.0)
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
             if not self._check_code(code, 'set_servo_angle'):
                 return
-            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=100,
-                                         mvacc=1000, wait=False, radius=0.0)
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
             if not self._check_code(code, 'set_servo_angle'):
                 return
-            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=100,
-                                         mvacc=1000, wait=False, radius=0.0)
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 32, 0, 25, 180], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
             if not self._check_code(code, 'set_servo_angle'):
                 return
-            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=100,
-                                         mvacc=1000, wait=False, radius=0.0)
+            code = self._arm.set_servo_angle(angle=[90, -12.6, 25, 0, 30, 180], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
             if not self._check_code(code, 'set_servo_angle'):
                 return
 
@@ -4206,12 +4211,15 @@ class RobotMain(Node):
             time.sleep(2)
 
             # right way point
-            code = self._arm.set_position(*[-80, 70, 350, 180, -0.0, -45], speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            code = self._arm.set_position(*[-80, 70, 350, 180, -0.0, -45], speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=20.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return
             
     def motion_cleaning(self, mode, target_x=None, target_y=None, target_deg=None):
+        tcp_speed = 50
+        tcp_acc = 100
+
         time.sleep(3)
         tuple_c = arm.get_position()
         list_c = tuple_c[1]
@@ -4243,20 +4251,23 @@ class RobotMain(Node):
 
             self.motion_place_squeegee()
 
-            self.motion_home()
+            code = self._arm.set_servo_angle(angle=self.position_home, speed=50,
+                                                    mvacc=100, wait=True, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
 
         elif mode == 1: #felldown
             if current_position[0] > 0 and target_x > 0:
                 # 좌측 배드 초기 위치
-                code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=self._tcp_speed,
-                                        mvacc=self._tcp_acc, radius=0, wait=True)
+                code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=tcp_speed,
+                                        mvacc=tcp_acc, radius=0, wait=True)
                 if not self._check_code(code, 'set_position'):
                     return
             elif current_position[0] < 0 and target_x < 0:
                 
                 # 우측 배드 초기 위치
-                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
-                                                mvacc=self._tcp_acc, radius=20.0, wait=True)
+                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=tcp_speed,
+                                                mvacc=tcp_acc, radius=20.0, wait=True)
                 if not self._check_code(code, 'set_position'):
                     return
 
@@ -4264,8 +4275,8 @@ class RobotMain(Node):
                 self.left_to_right()
 
                 # 우측 배드 초기 위치
-                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
-                                                mvacc=self._tcp_acc, radius=20.0, wait=True)
+                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=tcp_speed,
+                                                mvacc=tcp_acc, radius=20.0, wait=True)
                 if not self._check_code(code, 'set_position'):
                     return
                 
@@ -4273,64 +4284,20 @@ class RobotMain(Node):
                 self.right_to_left()
 
                 # 좌측 배드 초기 위치
-                code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=self._tcp_speed,
-                                        mvacc=self._tcp_acc, radius=0, wait=True)
+                code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=tcp_speed,
+                                        mvacc=tcp_acc, radius=0, wait=True)
                 if not self._check_code(code, 'set_position'):
                     return
 
             self.motion_pick_felldown_trash(target_x, target_y, target_deg)
 
             self.motion_dump_trash()
+            
+            code = self._arm.set_servo_angle(angle=self.position_home, speed=50,
+                                                    mvacc=100, wait=True, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
 
-            self.motion_home()
-
-        elif mode == 2:#standup
-            if current_position[0] > 0 and target_x > 0:
-                # 좌측 배드 초기 위치
-                code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=self._tcp_speed,
-                                        mvacc=self._tcp_acc, radius=0, wait=True)
-                if not self._check_code(code, 'set_position'):
-                    return
-            elif current_position[0] < 0 and target_x < 0:
-                # 우측 배드 초기 위치
-                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
-                                                mvacc=self._tcp_acc, radius=20.0, wait=True)
-                if not self._check_code(code, 'set_position'):
-                    return
-            elif current_position[0] > 0 and target_x < 0:
-                self.left_to_right()
-
-                # 우측 배드 초기 위치
-                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
-                                                mvacc=self._tcp_acc, radius=20.0, wait=True)
-                if not self._check_code(code, 'set_position'):
-                    return
-            elif current_position[0] < 0 and target_x > 0:
-                self.right_to_left()
-
-                # 좌측 배드 초기 위치
-                code = self._arm.set_position(*[200,0,400, 180, 0.0, 90], speed=self._tcp_speed,
-                                        mvacc=self._tcp_acc, radius=0, wait=True)
-                if not self._check_code(code, 'set_position'):
-                    return
-
-
-# code = self._arm.set_position(*[-178.926392, -47.471741, 200, -41.833539, 88.173277, -122.563235], speed=self._tcp_speed-50,
-#                                 mvacc=self._tcp_acc, radius=0.0, wait=True)
-# if not self._check_code(code, 'set_position'):
-#     return
-
-# code = self._arm.set_tool_position(*[0.0, 0.0, -5.0, 0.0, 0.0, 0.0], speed=10,
-#                                     mvacc=self._tcp_acc, wait=False)
-# if not self._check_code(code, 'set_position'):
-#     return
-
-
-# print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
-
-        # while True:
-        #     print("!!!!!!!!!!!!!!1", self._arm._arm.get_common_info(101, return_val=True))
-        # # print("!!!!!!!!!!!!!!1", self._arm.get_c31_error_info())
 
 
     def right_to_left(self):
@@ -4557,11 +4524,11 @@ class RobotMain(Node):
         #----------청소 과정---------- 
         # self.motion_home()
 
-        self.motion_cleaning(0)
+        # self.motion_cleaning(0)
 
-        # self.motion_cleaning(1, -319.68, -130.56, 42.6)
+        self.motion_cleaning(1, -319.68, -130.56, 42.6)
 
-        # self.motion_cleaning(1, 290.94, -100.48, 146.89)
+        self.motion_cleaning(1, 290.94, -100.48, 146.89)
 
         # self.motion_home()
 
