@@ -2820,7 +2820,7 @@ class RobotMain(Node):
                     return
                 # 지그A 가는 웨이포인트
                 code = self._arm.set_servo_angle(angle=[179.5, 28.3, 31.4, 113.1, 91.5, 0], speed=100,
-                                                    mvacc=100, wait=False, radius=20.0)
+                                                    mvacc=100, wait=True, radius=20.0)
                 if not self._check_code(code, 'set_servo_angle'):
                     return
 
@@ -2835,7 +2835,7 @@ class RobotMain(Node):
                 print("들어옴")
                 # 지그 가는 웨이포인트
                 code = self._arm.set_servo_angle(angle=[176, 27, 29.9, 76.8, 92, 0], speed=100,
-                                                    mvacc=100, wait=False, radius=0.0)
+                                                    mvacc=100, wait=True, radius=0.0)
                 if not self._check_code(code, 'set_servo_angle'):
                     return
                 print("지그 가는 웨이포인트")
@@ -2904,8 +2904,8 @@ class RobotMain(Node):
 
 
     def motion_place_capsule(self):
-        angle_speed = 100
-        angle_acc = 100
+        angle_speed = 120
+        angle_acc = 1000
         tcp_speed = 50
         tcp_acc = 100
         try:
@@ -2980,29 +2980,34 @@ class RobotMain(Node):
 
 
     def motion_place_fail_capsule(self):
-        code = self._arm.set_servo_angle(angle=[176, -2, 30.7, 79.5, 98.2, 29.3], speed=self._angle_speed,
-                                        mvacc=self._angle_acc, wait=False, radius=20.0)
+        angle_speed = 120
+        angle_acc = 1000
+        tcp_speed = 50
+        tcp_acc = 100
+
+        code = self._arm.set_servo_angle(angle=[176, -2, 30.7, 79.5, 98.2, 29.3], speed=angle_speed,
+                                        mvacc=angle_acc, wait=False, radius=20.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         if self.return_capsule_position == 1:
-            code = self._arm.set_position(*[-255.2, -133.8, 250, 68.3, 86.1, -47.0], speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            code = self._arm.set_position(*[-255.2, -133.8, 250, 68.3, 86.1, -47.0], speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=20.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return
 
-            code = self._arm.set_position(*self.position_jig_A_grab, speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=True)
+            code = self._arm.set_position(*self.position_jig_A_grab, speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=20.0, wait=True)
             if not self._check_code(code, 'set_position'):
                 return
 
         elif self.return_capsule_position == 2:
-            code = self._arm.set_position(*[-152.3, -127.0, 250, 4.8, 89.0, -90.7], speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, radius=20.0, wait=False)
+            code = self._arm.set_position(*[-152.3, -127.0, 250, 4.8, 89.0, -90.7], speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=20.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return
 
-            code = self._arm.set_position(*self.position_jig_B_grab, speed=self._tcp_speed-50,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=True)
+            code = self._arm.set_position(*self.position_jig_B_grab, speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=0.0, wait=True)
             if not self._check_code(code, 'set_position'):
                 return
 
@@ -3026,31 +3031,36 @@ class RobotMain(Node):
         if not self._check_code(code, 'stop_lite6_gripper'):
             return
         time.sleep(0.5)
-
-        self.sound.Effect_play(f'sealing.mp3')
         
-        code = self._arm.set_tool_position(z=-70, speed=self._tcp_speed,
-                                            mvacc=self._tcp_acc, wait=False)
+        code = self._arm.set_tool_position(z=-70, speed=tcp_speed,
+                                            mvacc=tcp_acc, wait=False)
         if not self._check_code(code, 'set_position'):
             return
         
+        self.sound.Effect_play(f'sealing.mp3')
+
         self.motion_home()
 
 
     def motion_grab_cup(self):
+        angle_speed = 120
+        angle_acc = 1000
+        tcp_speed = 50
+        tcp_acc = 100
+
         code = self._arm.open_lite6_gripper()
         if not self._check_code(code, 'open_lite6_gripper'):
             return
 
         # 컵가는 웨이포인트
-        code = self._arm.set_servo_angle(angle=[-2.8, -2.5, 45.3, 119.8, -79.2, -18.8], speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=False, radius=30.0)
+        code = self._arm.set_servo_angle(angle=[-2.8, -2.5, 45.3, 119.8, -79.2, -18.8], speed=angle_speed,
+                                            mvacc=angle_acc, wait=False, radius=30.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
 
         #컵 위치로 이동 잡기
-        code = self._arm.set_position(*self.position_cup_grab, speed=self._tcp_speed,
-                                        mvacc=self._tcp_acc, radius=0.0, wait=True)
+        code = self._arm.set_position(*self.position_cup_grab, speed=tcp_speed,
+                                        mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
@@ -3067,20 +3077,20 @@ class RobotMain(Node):
         time.sleep(1)
         
         # 컵 잡고 올리기
-        code = self._arm.set_position(z=100, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+        code = self._arm.set_position(z=100, radius=0, speed=150, mvacc=1000, relative=True,
                                       wait=False)
         if not self._check_code(code, 'set_position'):
             return
         
         # 돌아가는 웨이포인트
-        code = self._arm.set_servo_angle(angle=[2.9, -28.9, 26.2, 110.2, -26.1, -30.1], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[2.9, -28.9, 26.2, 110.2, -26.1, -30.1], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
 
         # 돌아가는 웨이포인트
-        code = self._arm.set_servo_angle(angle=[3, -8.7, 26.2, 107.4, 60.5, 19.7], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[3, -8.7, 26.2, 107.4, 60.5, 19.7], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
 
@@ -3139,53 +3149,25 @@ class RobotMain(Node):
         # 시작 위치로 이동
         code = self._arm.set_position(*[start_point[0], start_point[1], start_point[2], 
                                         helix_position[3], helix_position[4], helix_position[5]], 
-                                        speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
+                                        speed=speed, mvacc=100, radius=0.0, wait=False)
         if not self._check_code(code, 'set_position'):
             return
 
         # 나선을 따라 이동
         for x, y, z in zip(x_values, y_values, z_values):
             code = self._arm.set_position(*[x, y, z, helix_position[3], helix_position[4], helix_position[5]], 
-                                        speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
+                                        speed=speed, mvacc=100, radius=0.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return
 
         # 끝점으로 이동
         code = self._arm.set_position(*[helix_position[0], helix_position[1], end_point[2],
                                         helix_position[3], helix_position[4], helix_position[5]], 
-                                        speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=True)
+                                        speed=speed, mvacc=100, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
-        
-    def motion_sprial(self, radius, height, turns, speed=20):
 
-        icecream_center = self.position_icecream
-        icecream_center[2] = icecream_center[2]+60
-
-        sprial_position = icecream_center
-
-        # 세타 값(z축 주위의 각도)을 생성
-        theta = np.linspace(0, turns * 2 * np.pi, 100)
-
-        # z 값(높이) 생성
-        z = height * theta + sprial_position[2]
-
-        # 반경 값을 생성하고 높이에 따라 약간 감소하여 원뿔 모양 생성
-        r = radius * (1 - (z - sprial_position[2]) / height)
-
-        # x, y 좌표 계산
-        x = r * np.cos(theta) + sprial_position[0]
-        y = r * np.sin(theta) + sprial_position[1]
-
-    
-        # 나선을 따라 이동
-        for x_pos, y_pos, z_pos in zip(x, y, z):
-            code = self._arm.set_position(x_pos, y_pos, z_pos, sprial_position[3], sprial_position[4], sprial_position[5], 
-                                        speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
-            if not self._check_code(code, 'set_position'):
-                return
-
-    def motion_spiral3(self, radius, total_height, total_turns=5, speed=20):
+    def motion_spiral(self, radius, total_height, total_turns=5, speed=20):
         # 현재 로봇 위치 가져오기
         tuple_c = self._arm.get_position()
         list_c = tuple_c[1]
@@ -3224,79 +3206,12 @@ class RobotMain(Node):
                                           speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return
-            
-
-    def generate_conical_path(self, radius, cx, cy, cz, num_points=100, total_height= 1, total_turns=5):
-        z = np.linspace(0, total_height, num_points)  # 높이가 0에서 total_height까지
-        theta = np.linspace(0, total_turns *2* np.pi, num_points)  # 0에서 total_turns * π까지 회전
-        # r = 1 - z  # 원뿔의 반지름이 z가 증가함에 따라 감소
-        # 반경 값을 생성하고 높이에 따라 약간 감소하여 원뿔 모양 생성
-        r = radius * (1 - z)
-
-        # 극 좌표를 직교 좌표로 변환하고 중심 좌표 더하기
-        x = r * np.cos(theta) + cx
-        y = r * np.sin(theta) + cy
-        z = z + cz
-
-        return x, y, z, theta
-
-    def motion_sprial2(self, speed=20):
-        tuple_c = arm.get_position()
-        list_c = tuple_c[1]
-        current_position = list_c[:6]
-
-        icecream_center = current_position
-        # icecream_center[2] += 60  # z 좌표를 조정하여 높이 설정
-
-        # 중심 좌표 설정
-        cx = icecream_center[0]
-        cy = icecream_center[1]
-        cz = icecream_center[2]
-
-        # 로봇의 경로 계산
-        num_points = 100
-        x, y, z, theta = self.generate_conical_path(8, cx, cy, cz, num_points)
-
-        # 로봇의 위치를 시간에 따라 업데이트하는 예제
-        for i in range(num_points):
-            current_x = x[i]
-            current_y = y[i]
-            current_z = z[i]
-
-            # 로봇의 자세는 원래의 자세를 유지 (roll, pitch, yaw)
-            roll = icecream_center[3]
-            pitch = icecream_center[4]
-            yaw = icecream_center[5]
-
-            # 위치 설정 명령
-            code = self._arm.set_position(current_x, current_y, current_z, roll, pitch, yaw, 
-                                          speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
-            if not self._check_code(code, 'set_position'):
-                return
-
-            # cr = icecream_center[3]
-            # cp = icecream_center[4]
-            # cy = icecream_center[5]
-
-            # # 위치 설정 명령
-            # code = self._arm.set_tool_position(roll=cr, pitch=cp, yaw=cy, relative = True,
-            #                               speed=speed, mvacc=self._tcp_acc, radius=0.0, wait=False)
-            # if not self._check_code(code, 'set_position'):
-            #     return
-            
-            # # print(f"Time step {i}: theta={theta}")
-            # print(np.sin(theta[i]))
-
-
-
-
-
 
     def motion_make_icecream(self):
         
         # 아이스크림 위치
-        code = self._arm.set_position(*[243.1, 134.7, 300, -59.6, 88.5, 29.5], speed=self._tcp_speed,
-                                        mvacc=self._tcp_acc, radius=20.0, wait=True)
+        code = self._arm.set_position(*[243.1, 134.7, 300, -59.6, 88.5, 29.5], speed=150,
+                                        mvacc=1000, radius=20.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
@@ -3306,8 +3221,8 @@ class RobotMain(Node):
         if not self._check_code(code, 'set_cgpio_digital'):
             return
         
-        code = self._arm.set_position(z=60, radius=0, speed=20, mvacc=self._tcp_acc, relative=True,
-                                        wait=False)
+        code = self._arm.set_position(z=60, radius=0, speed=30, mvacc=100, relative=True,
+                                        wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
@@ -3315,7 +3230,7 @@ class RobotMain(Node):
 
         # self.motion_sprial2()
         # self.motion_spiral3(8, -5, 3, 30)
-        self.motion_spiral3(radius=15, total_height=-40, total_turns=5, speed=50)
+        self.motion_spiral(radius=15, total_height=-40, total_turns=5, speed=50)
 
         # self.motion_helix(8, -1, 3, 3, 30)
 
@@ -3325,32 +3240,37 @@ class RobotMain(Node):
             return
 
     def motion_icecream_to_topping(self):
+        angle_speed = 100
+        angle_acc = 1000
         #토핑 아래로 지나가는
-        code = self._arm.set_servo_angle(angle=[16.816311, -37.649286, 4.669835, 96.031508, 82.383711, 41.868891], speed=20,
-                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[16.816311, -37.649286, 4.669835, 96.031508, 82.383711, 41.868891], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
 
         # 토핑 아래
-        code = self._arm.set_servo_angle(angle=[126.573252, -53.387978, 1.068108, 182.537822, 35.668972, -4.317638], speed=20,
-                                         mvacc=self._angle_acc, wait=False, radius=00.0)
+        code = self._arm.set_servo_angle(angle=[126.573252, -53.387978, 1.068108, 182.537822, 35.668972, -4.317638], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=00.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
 
     def motion_get_topping(self, topping):
+        tcp_speed = 50
+        tcp_acc = 100
+
         if topping == 0:
             #-----------토핑 A----------
-            code = self._arm.set_position(*self.position_topping_B, speed=20,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=False)
+            code = self._arm.set_position(*self.position_topping_B, speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=0.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return 
 
-            code = self._arm.set_position(*self.position_topping_A, speed=20,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=True)
+            code = self._arm.set_position(*self.position_topping_A, speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=0.0, wait=True)
             if not self._check_code(code, 'set_position'):
                 return 
             
-            code = self._arm.set_position(z=30, radius=0, speed=20, mvacc=self._tcp_acc, relative=True,
+            code = self._arm.set_position(z=30, radius=0, speed=tcp_speed, mvacc=tcp_acc, relative=True,
                                             wait=False)
             if not self._check_code(code, 'set_position'):
                 return
@@ -3359,7 +3279,7 @@ class RobotMain(Node):
             if not self._check_code(code, 'set_cgpio_digital'):
                     return
             time.sleep(0.5)
-            self.motion_helix(8, -1, 1, 0, 40)
+            self.motion_helix(10, -1, 1, 0, 40)
 
             code = self._arm.set_cgpio_digital(0, 0, delay_sec=0)
             if not self._check_code(code, 'set_cgpio_digital'):
@@ -3368,12 +3288,12 @@ class RobotMain(Node):
             
         elif topping == 1:
             #-----------토핑 B----------
-            code = self._arm.set_position(*self.position_topping_B, speed=20,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=True)
+            code = self._arm.set_position(*self.position_topping_B, speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=0.0, wait=True)
             if not self._check_code(code, 'set_position'):
                 return 
             
-            code = self._arm.set_position(z=30, radius=0, speed=20, mvacc=self._tcp_acc, relative=True,
+            code = self._arm.set_position(z=30, radius=0, speed=tcp_speed, mvacc=tcp_acc, relative=True,
                                             wait=False)
             if not self._check_code(code, 'set_position'):
                 return
@@ -3382,7 +3302,7 @@ class RobotMain(Node):
             if not self._check_code(code, 'set_cgpio_digital'):
                     return
             time.sleep(0.5)
-            self.motion_helix(8, -1, 1, 1, 40)
+            self.motion_helix(10, -1, 1, 1, 40)
 
             code = self._arm.set_cgpio_digital(1, 0, delay_sec=0)
             if not self._check_code(code, 'set_cgpio_digital'):
@@ -3391,17 +3311,17 @@ class RobotMain(Node):
             
         elif topping == 2:
             #-----------토핑 C----------
-            code = self._arm.set_position(*self.position_topping_B, speed=20,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=False)
+            code = self._arm.set_position(*self.position_topping_B, speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=0.0, wait=False)
             if not self._check_code(code, 'set_position'):
                 return 
 
-            code = self._arm.set_position(*self.position_topping_C, speed=20,
-                                            mvacc=self._tcp_acc, radius=0.0, wait=True)
+            code = self._arm.set_position(*self.position_topping_C, speed=tcp_speed,
+                                            mvacc=tcp_acc, radius=0.0, wait=True)
             if not self._check_code(code, 'set_position'):
                 return 
             
-            code = self._arm.set_position(z=30, radius=0, speed=20, mvacc=self._tcp_acc, relative=True,
+            code = self._arm.set_position(z=30, radius=0, speed=tcp_speed, mvacc=tcp_acc, relative=True,
                                             wait=False)
             if not self._check_code(code, 'set_position'):
                 return
@@ -3410,7 +3330,7 @@ class RobotMain(Node):
             if not self._check_code(code, 'set_cgpio_digital'):
                     return
             time.sleep(0.5)
-            self.motion_helix(8, -1, 1, 2, 40)
+            self.motion_helix(10, -1, 1, 2, 40)
 
             code = self._arm.set_cgpio_digital(2, 0, delay_sec=0)
             if not self._check_code(code, 'set_cgpio_digital'):
@@ -3441,28 +3361,17 @@ class RobotMain(Node):
                 pass
 
          # 배출 웨이포인트
-        code = self._arm.set_servo_angle(angle=[180.0, -15.599979, 9.499984, 187.799981, 64.499979, 0.0,], speed=30,
-                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+        code = self._arm.set_servo_angle(angle=self.position_home, speed=30,
+                                         mvacc=100, wait=False, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
 
-        code = self._arm.set_servo_angle(angle=self.position_finish, speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=False, radius=20.0)
+        code = self._arm.set_servo_angle(angle=self.position_finish, speed=30,
+                                            mvacc=100, wait=True, radius=20.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
 
-    def motion_vent(self):
-        # 배출 웨이포인트
-        code = self._arm.set_servo_angle(angle=[180.0, -15.599979, 9.499984, 187.799981, 64.499979, 0.0,], speed=30,
-                                         mvacc=self._angle_acc, wait=False, radius=0.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-
-        code = self._arm.set_servo_angle(angle=self.position_finish, speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=False, radius=20.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-
+    
     def motion_Dondurma(self):
         self.dondurma_someone = True
 
@@ -3497,13 +3406,12 @@ class RobotMain(Node):
             else:
                 break
 
-
         code = self._arm.set_position(*self.Dondurma_end_position,
-                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+                                        speed=100, mvacc=1000, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
-        self.sound.Effect_play(f'THX')
+        self.sound.Effect_play(f'THX.mp3')
         time.sleep(10)
         
         # print(Dondurma_count)
@@ -3515,17 +3423,23 @@ class RobotMain(Node):
         #     return
 
     def motion_stack_icecream(self):
+        angle_speed = 100
+        angle_acc = 1000
+        tcp_speed = 50
+        tcp_acc = 100
+
+        self.sound.Effect_play(f'stack_icecream.mp3')
         code = self._arm.set_position(*self.Dondurma_end_position,
-                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+                                        speed=tcp_speed, mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
 
         code = self._arm.set_position(*[60.558903, -156.656799, 285, 54.735632, 89.999981, -82.133271],
-                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+                                        speed=tcp_speed, mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
-        code = self._arm.set_position(z=178, speed=50, mvacc=5000, radius=0.0, wait=True)
+        code = self._arm.set_position(z=178, speed=tcp_speed, mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
@@ -3535,7 +3449,7 @@ class RobotMain(Node):
         time.sleep(2)
 
         code = self._arm.set_position(*[117.877991, -102.960449, 178, 54.735632, 89.999981, -82.133271],
-                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+                                        speed=tcp_speed, mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
 
@@ -3544,28 +3458,39 @@ class RobotMain(Node):
             return
         time.sleep(0.5)
 
-        code = self._arm.set_position(z=300, speed=50, mvacc=5000, radius=0.0, wait=True)
+        code = self._arm.set_position(z=300, speed=tcp_speed, mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
 
-        code = self._arm.set_servo_angle(angle=[270, -7.800018, 32.599981, 267.599996, 90, -40], speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=False, radius=20.0)
+        code = self._arm.set_servo_angle(angle=[270, -7.800018, 32.599981, 267.599996, 90, -40], speed=angle_speed,
+                                            mvacc=angle_acc, wait=False, radius=20.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         
-
+        code = self._arm.set_servo_angle(angle=self.position_home, speed=angle_speed,
+                                            mvacc=angle_acc, wait=False, radius=20.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        
     def motion_dump_icecream(self):
-        code = self._arm.set_servo_angle(angle=[270, -7.800018, 32.599981, 267.599996, 90, -40], speed=self._angle_speed,
-                                            mvacc=self._angle_acc, wait=False, radius=20.0)
+        angle_speed = 100
+        angle_acc = 1000
+        tcp_speed = 50
+        tcp_acc = 100
+
+        self.sound.Effect_play(f'dump_icecream.mp3')
+        code = self._arm.set_servo_angle(angle=[270, -7.800018, 32.599981, 267.599996, 90, -40], speed=angle_speed,
+                                            mvacc=angle_acc, wait=False, radius=20.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         
         code = self._arm.set_position(*[117.877991, -102.960449, 300, 54.735632, 89.999981, -82.133271],
-                                        speed=50, mvacc=5000, radius=20.0, wait=True)
+                                        speed=tcp_speed, mvacc=tcp_acc, radius=20.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
-        code = self._arm.set_position(z=178, speed=50, mvacc=5000, radius=0.0, wait=True)
+        code = self._arm.set_position(z=178, speed=tcp_speed, mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
 
@@ -3575,7 +3500,7 @@ class RobotMain(Node):
         time.sleep(0.5)
         
         code = self._arm.set_position(*[60.558903, -156.656799, 178, 54.735632, 89.999981, -82.133271],
-                                        speed=50, mvacc=5000, radius=0.0, wait=True)
+                                        speed=tcp_speed, mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
@@ -3584,88 +3509,118 @@ class RobotMain(Node):
             return
         time.sleep(2)
 
-        code = self._arm.set_position(z=250, speed=50, mvacc=5000, radius=0.0, wait=True)
+        code = self._arm.set_position(z=250, speed=tcp_speed, mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
-        code = self._arm.set_servo_angle(angle=[180, 15.58, 35, 269.87, 80, -19.34], speed=80,
-                                            mvacc=self._angle_acc, wait=False, radius=20.0)
+        code = self._arm.set_servo_angle(angle=[180, 15.58, 35, 269.87, 80, -19.34], speed=angle_speed,
+                                            mvacc=angle_acc, wait=False, radius=20.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         
-        # self.motion_place_trash()
+        code = self._arm.set_servo_angle(angle=[135, -6, 11, 220, 70, 130], speed=50,
+                                            mvacc=100, wait=False, radius=20.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+
+        # # 터는 동작
+        code = self._arm.open_lite6_gripper()
+        if not self._check_code(code, 'open_lite6_gripper'):
+            return
+        time.sleep(1)
+
+        code = self._arm.set_servo_angle(angle=[135, -6, 11, 230, 60, 130], speed=angle_speed,
+                                            mvacc=angle_acc, wait=False, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        code = self._arm.set_servo_angle(angle=[135, -6, 11, 220, 70, 130], speed=angle_speed,
+                                            mvacc=angle_acc, wait=False, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+        
+        code = self._arm.set_servo_angle(angle=[135, -6, 11, 230, 60, 130], speed=angle_speed,
+                                            mvacc=angle_acc, wait=True, radius=20.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+
+        code = self._arm.stop_lite6_gripper()
+        if not self._check_code(code, 'stop_lite6_gripper'):
+            return
+        time.sleep(2)
+
+        code = self._arm.set_servo_angle(angle=self.position_home, speed=50,
+                                            mvacc=100, wait=False, radius=20.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
     
         
 
     def motion_trash_capsule(self):
+        angle_speed = 100
+        angle_acc = 1000
+        tcp_speed = 50
+        tcp_acc = 100
         try:
             self.clientSocket.send('motion_trash_start'.encode('utf-8'))
         except:
             print('socket error')
         
         # 홈에서 템핑가는 토핑밑
-        self._angle_speed = 20
-        self._angle_acc = 200
-        code = self._arm.set_servo_angle(angle=[51.2, -8.7, 13.8, 95.0, 86.0, 17.0], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=50.0)
+        code = self._arm.set_servo_angle(angle=[51.2, -8.7, 13.8, 95.0, 86.0, 17.0], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=50.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         # 홈에서 템핑가는 토핑밑에서 올라옴
-        code = self._arm.set_servo_angle(angle=[-16.2, -19.3, 42.7, 82.0, 89.1, 55.0], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[-16.2, -19.3, 42.7, 82.0, 89.1, 55.0], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         
-        self.sound.Effect_play(f'remove_capsule')
+        self.sound.Effect_play(f'remove_capsule.mp3')
         code = self._arm.open_lite6_gripper()
         if not self._check_code(code, 'open_lite6_gripper'):
             return
-        code = self._arm.set_servo_angle(angle=[-19.9, -19.1, 48.7, 87.2, 98.7, 60.0], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[-19.9, -19.1, 48.7, 87.2, 98.7, 60.0], speed=angle_speed,
+                                         mvacc=angle_acc, wait=True, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         
         # 템핑 앞
-        code = self._arm.set_position(*[222.8, 0.9, 470.0, -153.7, 87.3, -68.7], speed=self._tcp_speed,
-                                      mvacc=self._tcp_acc, radius=0.0, wait=True)
+        code = self._arm.set_position(*[222.8, 0.9, 470.0, -153.7, 87.3, -68.7], speed=tcp_speed,
+                                      mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
         # 캡슐 집고 올림
-        code = self._arm.set_position(*self.position_capsule_grab, speed=self._tcp_speed,
-                                      mvacc=self._tcp_acc, radius=0.0, wait=True)
+        code = self._arm.set_position(*self.position_capsule_grab, speed=tcp_speed,
+                                      mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         code = self._arm.close_lite6_gripper()
         if not self._check_code(code, 'close_lite6_gripper'):
             return
         time.sleep(1)
-        code = self._arm.set_position(z=30, radius=-1, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
+        code = self._arm.set_position(z=30, radius=-1, speed=tcp_speed, mvacc=tcp_acc, relative=True,
                                       wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
         # 캡슐 집고 올림
-        self._tcp_speed = 20
-        self._tcp_acc = 500
-        code = self._arm.set_position(*[221.9, -5.5, 500.4, -153.7, 87.3, -68.7], speed=self._tcp_speed,
-                                      mvacc=self._tcp_acc, radius=0.0, wait=True)
+        code = self._arm.set_position(*[221.9, -5.5, 500.4, -153.7, 87.3, -68.7], speed=tcp_speed,
+                                      mvacc=tcp_acc, radius=0.0, wait=True)
         if not self._check_code(code, 'set_position'):
             return
         
         # 탬핑에서부터 버리는 동작
-        self._angle_speed = 20
-        self._angle_acc = 100
-        code = self._arm.set_servo_angle(angle=[-10.7, -2.4, 53.5, 50.4, 78.1, 63.0], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=10.0)
+        code = self._arm.set_servo_angle(angle=[-10.7, -2.4, 53.5, 50.4, 78.1, 63.0], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=10.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
 
         # 뒤집어서 쓰래기통 위
-        self._angle_speed = 20
-        self._angle_acc = 100
-        code = self._arm.set_servo_angle(angle=[18.0, 11.2, 40.4, 90.4, 58.7, -148.8], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[18.0, 11.2, 40.4, 90.4, 58.7, -148.8], speed=angle_speed,
+                                         mvacc=angle_acc, wait=True, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         
@@ -3674,16 +3629,16 @@ class RobotMain(Node):
         if not self._check_code(code, 'open_lite6_gripper'):
             return
         # time.sleep(2)
-        code = self._arm.set_servo_angle(angle=[25.2, 15.2, 42.7, 83.2, 35.0, -139.8], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[25.2, 15.2, 42.7, 83.2, 35.0, -139.8], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
-        code = self._arm.set_servo_angle(angle=[18.0, 11.2, 40.4, 90.4, 58.7, -148.8], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[18.0, 11.2, 40.4, 90.4, 58.7, -148.8], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
-        code = self._arm.set_servo_angle(angle=[25.2, 15.2, 42.7, 83.2, 35.0, -139.8], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[25.2, 15.2, 42.7, 83.2, 35.0, -139.8], speed=angle_speed,
+                                         mvacc=angle_acc, wait=True, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         code = self._arm.stop_lite6_gripper()
@@ -3691,22 +3646,20 @@ class RobotMain(Node):
             return
         
         # 털고 복귀하는 토핑 밑
-        self._angle_speed = 20
-        self._angle_acc = 100
-        code = self._arm.set_servo_angle(angle=[28.3, -9.0, 12.6, 85.9, 78.5, 20.0], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=30.0)
+        code = self._arm.set_servo_angle(angle=[28.3, -9.0, 12.6, 85.9, 78.5, 20.0], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=30.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         
         
-        code = self._arm.set_servo_angle(angle=[149.3, -9.4, 10.9, 114.7, 69.1, 26.1], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=50.0)
+        code = self._arm.set_servo_angle(angle=[149.3, -9.4, 10.9, 114.7, 69.1, 26.1], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=50.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         
         # 홈 위치
-        code = self._arm.set_servo_angle(angle=[179.2, -42.1, 7.4, 186.7, 41.5, -1.6], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=True, radius=0.0)
+        code = self._arm.set_servo_angle(angle=[179.2, -42.1, 7.4, 186.7, 41.5, -1.6], speed=angle_speed,
+                                         mvacc=angle_acc, wait=True, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
         try:
@@ -4279,8 +4232,7 @@ class RobotMain(Node):
                 return
             
             self.motion_grap_squeegee()
-
-            #스위핑 함수 추가
+            
             self.motion_sweeping_right()
 
             self.right_to_left()
@@ -4462,80 +4414,14 @@ class RobotMain(Node):
 
 
     def test_main(self):
-
-        #----------initial----------
-        self.sound = Hi5_Sound()
-        self.sound.sound_init()
+        # self.motion_comeback(3)
 
 
-        self.sound.BGM_play()
-
-        self.motion_home()
-
-
-        self.capsule_position = 1
-
-        self.motion_grab_capsule()
-
-        self.motion_check_sealing()
-
-        self.motion_place_capsule()
-
-        # # self.motion_place_fail_capsule()
-
-        # self.motion_grab_cup()
-
-        # self.motion_make_icecream()
-
-        # self.motion_icecream_to_topping()
-
-        # self.topping_combination(self.topping_list)
-
-        # self.motion_Dondurma()
-
-        # self.motion_trash_capsule()
-
-        # self.motion_home()
-
-
-
-
-
-
-
-
-
-
-
-        # self.motion_dump_icecream()
-        # self.motion_place_trash()
-
-    
+        
 
 
         # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
         
-
-
-        # 지그 3 위치
-        # get_position :(0, [60.558903, -156.656799, 176.482208, 54.735632, 89.999981, -82.133271]) 
-        # get_position(radian) :(0, [60.558903, -156.656799, 176.482208, 0.955317, 1.570796, -1.433496]) 
-        # get_servo_angle :(0, [312.613737, 31.147705, 22.619629, 269.488407, 90.0767, 8.527789, 0.0])
-
-        # 지금 3 뒤로 빠지기
-        # get_position :(0, [117.877991, -102.960449, 177.999985, 54.735632, 89.999981, -82.133271]) 
-        # get_position(radian) :(0, [117.877991, -102.960449, 177.999985, 0.955317, 1.570796, -1.433496]) 
-        # get_servo_angle :(0, [339.481103, 32.322039, 27.32642, 296.263355, 87.784984, 4.478811, 0.0])
-
-        # 복귀
-        # get_position :(0, [-61.404785, -187.122116, 327.894073, 25.866466, 86.493938, -153.625455]) 
-        # get_position(radian) :(0, [-61.404785, -187.122116, 327.894073, 0.451455, 1.509604, -2.68127]) 
-        # get_servo_angle :(0, [270.000001, -7.800018, 32.599981, 267.599996, 92.099986, -38.899995, 0.0])
-
-
-
-
-
 
         # tuple_c = arm.get_position()
         # list_c = tuple_c[1]
@@ -4545,67 +4431,6 @@ class RobotMain(Node):
 
         # print(a)c
 
-        ''' 
-            배드 크기 800 x 618
-            장애물 지그 위치 y 480
-            장애물 로봇 위치 50으로 둘러 있음
-
-            (618 / 2) - 480 + = -171
-            (800 / 2) - 800 = -400
-
-            squeegee_size = [260, 50]
-
-            현재 위치 = [-250 -75]
-
-            목표abs[-171] - 현재abs[-75] - 스키지abs[25] = 71
-
-            목표가 - 니까 -71 5씩 전진
-
-
-
-            현재 위치 = [0 , -171]
-
-            목표 = [0 , 0]
-
-            장애물 = [-50, -50]
-
-            목표abs[0] - 현재abs[-171] = -171 + 스키지abs[25]
-
-            while True:
-                Obstacle = [-50,-50]
-                get_position()이 y축 50일 때 x축이 -로 회피
-                0<=y<=-50 장애물
-                0<=x<=-50 장애물
-
-                if y>=-50:
-                    x는 -50 까지 회피
-                
-
-
-
-
-                set_position(x=avoid y=5, relative=True)
-
-
-
-
-
-
-
-            하고 싶은거
-            -171에서 0 까지 오는데 x축으로 로봇 위치 피하고 싶음
-            로봇은 그럼 여기서 +50 씩임
-
-
-
-
-
-
-            5씩 전진
-            목표가 -300면 +5 +5 +5 +5 +5....
-
-
-        '''
 
         # 우측 배드 초기 위치
         # code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=self._tcp_speed,
@@ -4645,39 +4470,16 @@ class RobotMain(Node):
 
 
 
+        #----------initial----------
+        self.sound = Hi5_Sound()
+        self.sound.sound_init()
+
+        self.sound.BGM_play()
+
+        self.motion_home()
 
 
-        # self.motion_sprial2(20)
-        # # 지그 가는 웨이포인트
-        # code = self._arm.set_servo_angle(angle=[176, 27, 29.9, 76.8, 92, 180], speed=self._angle_speed,
-        #                                     mvacc=self._angle_acc, wait=False, radius=0.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #     return
-
-
-        # # 지그C 잡으러가는 웨이포인트
-        # code = self._arm.set_servo_angle(angle=[182.6, 25.3, 27.2, 55.7, 91.5, 180], speed=self._angle_speed,
-        #                                     mvacc=self._angle_acc, wait=False, radius=20.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #     return
-        
-        # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
-        
-        
-        
-        
-        
-        # [-137.37352, -64.524979, 199.987595, 89.659644, -73.723224, 37.119071])
-        # self.position_jig_C_grab = [-76.6, -144.6, 200, 5.7, 88.9, -50.1] #linear
-
-        # code = self._arm.set_position(*self.position_jig_C_grab, speed=self._tcp_speed,
-        #                                 mvacc=self._tcp_acc, radius=0.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #     return
-
-
-
-        # ---------------------제조 과정 ---------완
+        #----------제조 과정----------완
 
         # # JSON 메시지
         # json_message = '''
@@ -4717,7 +4519,6 @@ class RobotMain(Node):
         #     self.sound.Effect_play(f'{i}')
         # self.sound.Effect_play(f'makestart.mp3')
 
-        # self.motion_home()
 
         # self.capsule_position = 1
 
@@ -4726,8 +4527,6 @@ class RobotMain(Node):
         # self.motion_check_sealing()
 
         # self.motion_place_capsule()
-
-        # # self.motion_place_fail_capsule()
 
         # self.motion_grab_cup()
 
@@ -4744,11 +4543,21 @@ class RobotMain(Node):
         # self.motion_home()
 
 
+        # 실링 체크 실패했을 때
+        # self.motion_place_fail_capsule()
 
-        # ---------------------청소 과정 --------- 
+
+        # 돈두르마시 감지 안됐을 때
+        # self.motion_stack_icecream()
+
+        # 아이스크림 지그에 5분 이상 있었을 때
+        # self.motion_dump_icecream()
+
+
+        #----------청소 과정---------- 
         # self.motion_home()
 
-        # self.motion_cleaning(0)
+        self.motion_cleaning(0)
 
         # self.motion_cleaning(1, -319.68, -130.56, 42.6)
 
@@ -4805,24 +4614,8 @@ class RobotMain(Node):
         #         break
 
 
-
-        # Dondurma_start_position = [0.0, -500, 285, 54.735632, 89.999981, -35.264406] #linear
-        # Dondurma_end_position = [0.0, -180, 285, 54.735632, 89.999981, -35.264406] #linear
-
-        # code = self._arm.set_position(*Dondurma_start_position, speed=100,
-        #                                     mvacc=5000, radius=0.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #     return
-
 # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
 
-
-
-        #토핑 밑 그리퍼 아래
-        # code = self._arm.set_servo_angle(angle=[88,-27,24.5,184.7,-43.4,-2.1], speed=20,
-        #                                     mvacc=self._angle_acc, wait=True, radius=0.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #     return
         
 
 #  def run(self):
@@ -4915,157 +4708,7 @@ class RobotMain(Node):
 
 
 
-# def motion_trash_capsule(self):
-#         try:
-#             self.clientSocket.send('motion_trash_start'.encode('utf-8'))
-#         except:
-#             print('socket error')
-
-        # # 홈에서 템핑가는 토핑밑
-        # self._angle_speed = 150
-        # self._angle_acc = 300
-        # code = self._arm.set_servo_angle(angle=[51.2, -8.7, 13.8, 95.0, 86.0, 17.0], speed=self._angle_speed,
-        #                                  mvacc=self._angle_acc, wait=False, radius=50.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #     return
-
-        # # 홈에서 템핑가는 토핑밑에서 올라옴
-        # code = self._arm.set_servo_angle(angle=[-16.2, -19.3, 42.7, 82.0, 89.1, 55.0], speed=self._angle_speed,
-        #                                  mvacc=self._angle_acc, wait=True, radius=0.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #     return
-
-        '''
-        # 탬핑에서부터 버리는 동작
-        self._angle_speed = 60
-        self._angle_acc = 100
-        code = self._arm.set_servo_angle(angle=[-10.7, -2.4, 53.5, 50.4, 78.1, 63.0], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=10.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-
-        # 뒤집어서 쓰래기통 위        code = self._arm.set_position(*[ 0-(250/2), -50 - (40/2) , 265 , 180, 0, 90], speed=20,
-                                        mvacc=self._tcp_acc, radius=0.0, wait=True)
-        if not self._check_code(code, 'set_position'):
-            return
-        
-        code = self._arm.set_position(*[ -50-(250/2), 20, 265 , 180, 0, 90], speed=20,
-                                        mvacc=self._tcp_acc, radius=900.0, wait=True)
-        if not self._check_code(code, 'set_position'):
-            return
-        self._angle_speed = 160
-        self._angle_acc = 1000
-        code = self._arm.set_servo_angle(angle=[18.0, 11.2, 40.4, 90.4, 58.7, -148.8], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=True, radius=0.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-        
-        # 터는 동작
-        code = self._arm.open_lite6_gripper()
-        if not self._check_code(code, 'open_lite6_gripper'):
-            return
-        # time.sleep(2)
-        code = self._arm.set_servo_angle(angle=[25.2, 15.2, 42.7, 83.2, 35.0, -139.8], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=0.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-        code = self._arm.set_servo_angle(angle=[18.0, 11.2, 40.4, 90.4, 58.7, -148.8], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=0.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-        code = self._arm.set_servo_angle(angle=[25.2, 15.2, 42.7, 83.2, 35.0, -139.8], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=True, radius=0.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-        
-        code = self._arm.stop_lite6_gripper()
-        if not self._check_code(code, 'stop_lite6_gripper'):
-            return
-
-        # 털고 복귀하는 토핑 밑
-        self._angle_speed = 120
-        self._angle_acc = 1000
-        code = self._arm.set_servo_angle(angle=[28.3, -9.0, 12.6, 85.9, 78.5, 20.0], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=False, radius=30.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-        
-        # 홈 위치
-        code = self._arm.set_servo_angle(angle=[179.2, -42.1, 7.4, 186.7, 41.5, -1.6], speed=self._angle_speed,
-                                         mvacc=self._angle_acc, wait=True, radius=0.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-        '''
-
-
-        # # self.motion_serve()
-        # # 서빙 웨이포인트1
-        # code = self._arm.set_servo_angle(angle=[18.2, -12.7, 8.3, 90.3, 88.1, 23.6], speed=self._angle_speed,
-        #                                  mvacc=self._angle_acc, wait=False, radius=20.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #     return
-        # # 서빙 웨이포인트2
-        # code = self._arm.set_servo_angle(angle=[146.9, -12.7, 8.3, 91.0, 89.3, 22.1], speed=self._angle_speed,
-        #                                  mvacc=self._angle_acc, wait=True, radius=0.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #     return
-
-        # self._tcp_speed = 100
-        # self._tcp_acc = 1000
-
-        # # A배출구 위
-        # code = self._arm.set_position(*self.position_jig_A_serve, speed=self._tcp_speed,
-        #                                 mvacc=self._tcp_acc, radius=0.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #     return
-        # # 내려 놓기
-        # code = self._arm.set_position(z=-18, radius=0, speed=self._tcp_speed, mvacc=self._tcp_acc, relative=True,
-        #                                 wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #     return
-        # code = self._arm.open_lite6_gripper()
-        # if not self._check_code(code, 'open_lite6_gripper'):
-        #     return
-        # time.sleep(1)
-
-        # # 내려 놓고 복귀 웨이포인트
-        # code = self._arm.set_position(*[-256.2, -126.6, 210.1, -179.2, 77.2, 66.9], speed=self._tcp_speed,
-        #                                 mvacc=self._tcp_acc, radius=0.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #     return
-        # code = self._arm.stop_lite6_gripper()
-        # if not self._check_code(code, 'stop_lite6_gripper'):
-        #     return
-        # time.sleep(0.5)
-        
-        # # 내려 놓고 복귀 웨이포인트2
-        # code = self._arm.set_position(*[-242.8, -96.3, 210.5, -179.2, 77.2, 66.9], speed=self._tcp_speed,
-        #                                 mvacc=self._tcp_acc, radius=0.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #     return
-
-        # # 내려 놓고 복귀 웨이포인트2
-        # code = self._arm.set_position(*[-189.7, -26.0, 193.3, -28.1, 88.8, -146.0], speed=self._tcp_speed,
-        #                                 mvacc=self._tcp_acc, radius=0.0, wait=True)
-        # if not self._check_code(code, 'set_position'):
-        #     return
-
-        # # 내려 놓고 복귀 웨이포인트3
-        # code = self._arm.set_servo_angle(angle=[169.6, -8.7, 13.8, 85.8, 93.7, 19.0], speed=self._angle_speed,
-        #                                  mvacc=self._angle_acc, wait=True, radius=10.0)
-        # if not self._check_code(code, 'set_servo_angle'):
-        #     return
-
-        # self._tcp_speed = 100
-        # self._tcp_acc = 1000
-
-
-        # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
-        
-        # self.motion_grap_squeegee()
-
-
-        # 하이파이브 모션
+        # ------------------하이파이브 모션
         # code = self._arm.set_servo_angle(angle=[179.2, -42.1, 7.4, 186.7, 41.5, -1.6], speed=self._angle_speed,
         #                             mvacc=self._angle_acc, wait=True, radius=100.0)
         # if not self._check_code(code, 'set_servo_angle'):
@@ -5139,6 +4782,7 @@ class RobotMain(Node):
         #                             mvacc=self._angle_acc, wait=True, radius=0.0)
         # if not self._check_code(code, 'set_servo_angle'):
         #     return
+
 
     # def stop_task(self):
     #     while True:
