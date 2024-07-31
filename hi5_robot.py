@@ -45,6 +45,7 @@ import torch
 from ultralytics import YOLO
 import cvzone
 from cvzone.HandTrackingModule import HandDetector
+from collections import defaultdict
 
 import numpy as np
 
@@ -88,6 +89,9 @@ class RobotMain(Node):
         self.topping_list = None
 
         self.tracking_position =[]
+        self.tracking_angle = None
+        self.tracking_cnt = 0
+        self.tracking_dic = defaultdict(list)
 
         # self.position_home = [180, -42.1, 7.4, 186.7, 41.5, 0] #angle
  
@@ -2600,13 +2604,15 @@ class RobotMain(Node):
                     robot_coords_mm_y = (avg_y - robot_origin_y) * pixel_to_mm_ratio
                     print(f"{object_id}의 로봇 좌표 계산됨: ({robot_coords_mm_x:.2f} mm, {robot_coords_mm_y:.2f} mm)")
 
-                    if flag:
-                        self.tracking_position.append(robot_coords_mm_x)
-                        self.tracking_position.append(robot_coords_mm_y)
-                        flag = 0
+                    self.tracking_dic[object_id].append(robot_coords_mm_x,robot_coords_mm_y)
 
-                    self.tracking_position = [robot_coords_mm_x, robot_coords_mm_y]
-                    print(f'\n\n               카메라         \n\n\n{self.tracking_position[0]} , {self.tracking_position[1]}\n\n\n\n\n')
+                    # if flag:
+                    #     self.tracking_position.append(robot_coords_mm_x)
+                    #     self.tracking_position.append(robot_coords_mm_y)
+                    #     flag = 0
+
+                    # self.tracking_position = [robot_coords_mm_x, robot_coords_mm_y]
+                    # self.tracking_cnt = len(sorted_objects)
 
                     # 로봇 제어 코드 실행
                     # 여기에 로봇 제어 코드를 추가하세요
@@ -2620,7 +2626,9 @@ class RobotMain(Node):
             # 결과가 포함된 이미지 표시
             cv2.imshow('Detection Results', undistorted_frame)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            # if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & len(self.tracking_dic) > 0:
+                time.sleep(3)
                 break
 
         cap.release()
@@ -2692,6 +2700,11 @@ class RobotMain(Node):
                         rect = cv2.minAreaRect(cnt)
                         box = cv2.boxPoints(rect)
                         box = np.int0(box)
+                        top_left = box[0]
+                        top_right = box[1]
+                        bottom_left = box[3]
+                        diff_top = abs(top_right[0] - top_left[0])
+                        diff_left = abs(bottom_left[1] - top_left[1])
                         cv2.drawContours(undistorted_frame, [box], 0, (0, 255, 0), 2)
 
                         # 중심점 계산
@@ -2716,8 +2729,20 @@ class RobotMain(Node):
 
                         # 기울기 계산
                         angle = calculate_angle(center_point, bottom_center_point)
+                        if angle is not None:
+                            if 85 < angle < 90:
+                                adjusted_angle = 180 - angle
+                                if diff_top > diff_left:
+                                    adjusted_angle = angle 
+                                else:
+                                    adjusted_angle = angle + 90   
+                            else:
+                                adjusted_angle = 180 - angle
+                        print(f"adjusted_angle : {adjusted_angle}")
                         cv2.putText(undistorted_frame, f"Angle: {angle:.2f}", (center_x, center_y - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
                         print(f"Detected angle: {angle:.2f}")
+
+                        self.tracking_angle = adjusted_angle
 
                         # 세그멘테이션 마스크를 컬러로 변환
                         colored_mask = np.zeros_like(undistorted_frame)
@@ -2729,7 +2754,8 @@ class RobotMain(Node):
                         # 결과가 포함된 이미지 표시
                         cv2.imshow('Segmentation Results', overlay)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            # if cv2.waitKey(1) & 0xFF == ord('q'):
+            if cv2.waitKey(1) & (self.tracking_angle != None):
                 break
 
         cap.release()
@@ -3185,11 +3211,7 @@ class RobotMain(Node):
         print('motion_grab_capsule finish')
     
     def motion_check_sealing(self):
-        print('motion_check_sealing check')
-        # self._angle_speed = 100
-        # self._angle_acc = 200
-        self._angle_speed = 20
-        self._angle_acc = 200
+        print('motion_check_sealing start')
 
         code = self._arm.set_servo_angle(angle=[179.1, -85.6, 13.1, 182.6, -3.2, 180], speed=100,
                                             mvacc=100, wait=True, radius=30.0)
@@ -3201,14 +3223,15 @@ class RobotMain(Node):
 
 
     def motion_place_capsule(self):
+        print('motion_place_capsule start')
         angle_speed = 120
         angle_acc = 1000
         tcp_speed = 50
         tcp_acc = 100
-        try:
-            self.clientSocket.send('motion_place_capsule_start'.encode('utf-8'))
-        except:
-            print('socket error')
+        # try:
+        #     self.clientSocket.send('motion_place_capsule start'.encode('utf-8'))
+        # except:
+        #     print('socket error')
 
         #토핑 아래로 지나가는 1
         code = self._arm.set_servo_angle(angle=[81.0, -10.8, 6.9, 103.6, 88.6, 9.6], speed=angle_speed,
@@ -3268,15 +3291,13 @@ class RobotMain(Node):
         if not self._check_code(code, 'set_position'):
             return
 
-        try:
-            self.clientSocket.send('motion_place_capsule_finish'.encode('utf-8'))
-        except:
-            print('socket error')
-        time.sleep(0.5)
         self.motion_num = 3
-
+        print('motion_place_capsule finish')
+        
+        time.sleep(0.5)
 
     def motion_place_fail_capsule(self):
+        print('motion_place_fail_capsule start')
         angle_speed = 120
         angle_acc = 1000
         tcp_speed = 50
@@ -3334,12 +3355,17 @@ class RobotMain(Node):
         if not self._check_code(code, 'set_position'):
             return
         
-        self.sound.Effect_play(f'sealing.mp3')
+        code = self._arm.set_servo_angle(angle=self.position_home, speed=50,
+                                            mvacc=100, wait=True, radius=20.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
 
-        self.motion_home()
+        print('motion_place_fail_capsule finish')
 
 
     def motion_grab_cup(self):
+        print('motion_grab_cup start')
+
         angle_speed = 120
         angle_acc = 1000
         tcp_speed = 50
@@ -3402,6 +3428,10 @@ class RobotMain(Node):
         #                                     mvacc=self._angle_acc, wait=True, radius=0.0)
         # if not self._check_code(code, 'set_servo_angle'):
         #     return
+
+
+        self.motion_num = 4
+        print('motion_grab_cup finish')
 
 
     def motion_helix(self, radius, height, turns, mode, speed=20):
@@ -3505,7 +3535,7 @@ class RobotMain(Node):
                 return
 
     def motion_make_icecream(self):
-        
+        print('motion_make_icecream start')
         # 아이스크림 위치
         code = self._arm.set_position(*[243.1, 134.7, 300, -59.6, 88.5, 29.5], speed=150,
                                         mvacc=1000, radius=20.0, wait=True)
@@ -3535,21 +3565,10 @@ class RobotMain(Node):
         code = self._arm.set_cgpio_digital(3, 0, delay_sec=0)
         if not self._check_code(code, 'set_cgpio_digital'):
             return
+        
+        self.motion_num = 5
+        print('motion_make_icecream finish')
 
-    def motion_icecream_to_topping(self):
-        angle_speed = 100
-        angle_acc = 1000
-        #토핑 아래로 지나가는
-        code = self._arm.set_servo_angle(angle=[16.816311, -37.649286, 4.669835, 96.031508, 82.383711, 41.868891], speed=angle_speed,
-                                         mvacc=angle_acc, wait=False, radius=0.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
-
-        # 토핑 아래
-        code = self._arm.set_servo_angle(angle=[126.573252, -53.387978, 1.068108, 182.537822, 35.668972, -4.317638], speed=angle_speed,
-                                         mvacc=angle_acc, wait=False, radius=00.0)
-        if not self._check_code(code, 'set_servo_angle'):
-            return
 
     def motion_get_topping(self, topping):
         tcp_speed = 50
@@ -3635,17 +3654,22 @@ class RobotMain(Node):
             time.sleep(0.5)
             
 
-    def topping_combination(self, topping_list):
-        ''' 토핑 조합
-        empty = 0
-        oreo = 1
-        chocoball = 2
-        cereal = 3
-        oreo chocoball = 4
-        oreo cereal = 5
-        chocoball cereal = 6
-        oreo chocoball cereal = 7
-        '''
+    def motion_topping(self, topping_list):
+        print('motion_topping start')
+        angle_speed = 100
+        angle_acc = 1000
+        #토핑 아래로 지나가는
+        code = self._arm.set_servo_angle(angle=[16.816311, -37.649286, 4.669835, 96.031508, 82.383711, 41.868891], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=0.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+
+        # 토핑 아래
+        code = self._arm.set_servo_angle(angle=[126.573252, -53.387978, 1.068108, 182.537822, 35.668972, -4.317638], speed=angle_speed,
+                                         mvacc=angle_acc, wait=False, radius=00.0)
+        if not self._check_code(code, 'set_servo_angle'):
+            return
+
         for select in topping_list:
             print(select)
             if  select == 'oreo':
@@ -3657,7 +3681,7 @@ class RobotMain(Node):
             else:
                 pass
 
-         # 배출 웨이포인트
+        # 배출 웨이포인트
         code = self._arm.set_servo_angle(angle=self.position_home, speed=30,
                                          mvacc=100, wait=False, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
@@ -3667,9 +3691,14 @@ class RobotMain(Node):
                                             mvacc=100, wait=True, radius=20.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
+        
+        self.motion_num = 6
+        print('motion_topping finish')
 
     
     def motion_Dondurma(self):
+        print('motion_Dondurma start')
+
         self.dondurma_someone = True
 
         code = self._arm.set_position(*self.Dondurma_start_position, speed=100,
@@ -3718,6 +3747,9 @@ class RobotMain(Node):
         # code = self._arm.set_position(y=abs((Dondurma_start_position[1]-Dondurma_end_position[1])/Dondurma_count), radius=0, speed=10, mvacc=50, relative=True, wait=False)
         # if not self._check_code(code, 'set_position'):
         #     return
+
+        self.motion_num = 7
+        print('motion_Dondurma finish')
 
     def motion_stack_icecream(self):
         angle_speed = 100
@@ -3854,14 +3886,16 @@ class RobotMain(Node):
         
 
     def motion_trash_capsule(self):
+        self.motion_num = 8
+        print('motion_trash_capsule start')
         angle_speed = 100
         angle_acc = 1000
         tcp_speed = 50
         tcp_acc = 100
-        try:
-            self.clientSocket.send('motion_trash_start'.encode('utf-8'))
-        except:
-            print('socket error')
+        # try:
+        #     self.clientSocket.send('motion_trash_start'.encode('utf-8'))
+        # except:
+        #     print('socket error')
         
         # 홈에서 템핑가는 토핑밑
         code = self._arm.set_servo_angle(angle=[51.2, -8.7, 13.8, 95.0, 86.0, 17.0], speed=angle_speed,
@@ -3959,35 +3993,44 @@ class RobotMain(Node):
                                          mvacc=angle_acc, wait=True, radius=0.0)
         if not self._check_code(code, 'set_servo_angle'):
             return
-        try:
-            self.clientSocket.send('motion_trash_finish'.encode('utf-8'))
-        except:
-            print('socket error')
-        time.sleep(0.5)
+        # try:
+        #     self.clientSocket.send('motion_trash_finish'.encode('utf-8'))
+        # except:
+        #     print('socket error')
+        # time.sleep(0.5)
+
+        self.motion_num = 8
+        print('motion_trash_capsule finish')
 
 
-    def motion_comeback(self, num):
-        if num == 1:
-            print("motion_grab_capsule")
-            self.motion_home()
-            #캡슐 지그에 가져다 놓기 추가
-        elif num == 2:
-            print('motion_check_sealing')
-            #캡슐 지그에 가져다 놓기 추가
-        elif num == 3:
-            print("motion_place_capsule")
+    def motion_recovery(self, num):
+        angle_speed = 60
+        angle_acc = 500
+        tcp_speed = 50
+        tcp_acc = 100
 
-            # 템핑 앞
-            code = self._arm.set_position(*[222.8, 0.9, 470.0, -153.7, 87.3, -68.7], speed=self._tcp_speed,
-                                        mvacc=self._tcp_acc, radius=0.0, wait=True)
-            if not self._check_code(code, 'set_position'):
-                return
-            
+        if num in [1, 2, 6]:
+            print("복구 시작 : 캡슐 잡은 상태")
+            self.motion_place_fail_capsule()
+
+        elif num in [3, 4]:
+            print("복구 시작 : 캡슐 삽입한 상태")
+
             code = self._arm.open_lite6_gripper()
             if not self._check_code(code, 'open_lite6_gripper'):
                 return
             time.sleep(1)
-            
+
+            # # 템핑 앞
+            # code = self._arm.set_position(*[222.8, 0.9, 470.0, -153.7, 87.3, -68.7], speed=self._tcp_speed,
+            #                             mvacc=self._tcp_acc, radius=0.0, wait=True)
+            # if not self._check_code(code, 'set_position'):
+            #     return
+            code = self._arm.set_servo_angle(angle=[-15.503321, -4.641989, 71.499862, 85.082915, 99.572387, 74.310964], speed=30,
+                                            mvacc=100, wait=False, radius=10.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+
             # 캡슐 집고 올림
             code = self._arm.set_position(*self.position_capsule_grab, speed=self._tcp_speed,
                                         mvacc=self._tcp_acc, radius=0.0, wait=True)
@@ -4006,7 +4049,7 @@ class RobotMain(Node):
             self._tcp_speed = 100
             self._tcp_acc = 1000
 
-            # 캡슐 집고 올림
+            # 캡슐 빼기
             code = self._arm.set_position(*[221.9, -15.5, 500.4, -153.7, 87.3, -68.7], speed=self._tcp_speed,
                                         mvacc=self._tcp_acc, radius=0.0, wait=True)
             if not self._check_code(code, 'set_position'):
@@ -4032,10 +4075,28 @@ class RobotMain(Node):
             
             self.motion_place_fail_capsule()
 
-        elif num == 4:
-            print("a")
         elif num == 5:
-            print("a")
+            print("복구 시작 : 아이스크림 제조한 상태")
+            #토핑 아래로 지나가는
+            code = self._arm.set_servo_angle(angle=[16.816311, -37.649286, 4.669835, 96.031508, 82.383711, 41.868891], speed=angle_speed,
+                                                mvacc=angle_acc, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+
+            # 토핑 아래
+            code = self._arm.set_servo_angle(angle=[126.573252, -53.387978, 1.068108, 182.537822, 35.668972, -4.317638], speed=angle_speed,
+                                                mvacc=angle_acc, wait=False, radius=00.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            
+            # 배출 웨이포인트
+            code = self._arm.set_servo_angle(angle=self.position_home, speed=30,
+                                                mvacc=100, wait=False, radius=0.0)
+            if not self._check_code(code, 'set_servo_angle'):
+                return
+            
+            self.motion_place_fail_capsule()
+
 
     def motion_grap_squeegee(self):
         #스키지 잡으러 가기
@@ -4205,9 +4266,6 @@ class RobotMain(Node):
         #     return
 
 
-#####################################################################################################################
-############################ have to modify inital position, +side sweep ############################################
-#####################################################################################################################
     def motion_sweeping_left(self): 
         up_speed = 200
         up_acc = 2000
@@ -4563,7 +4621,7 @@ class RobotMain(Node):
             elif current_position[0] < 0 and target_x < 0:
                 
                 # 우측 배드 초기 위치
-                code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=tcp_speed,
+                code = self._arm.set_position(*[-200,  0, 400, 180, 0, 90], speed=tcp_speed,
                                                 mvacc=tcp_acc, radius=20.0, wait=True)
                 if not self._check_code(code, 'set_position'):
                     return
@@ -4674,37 +4732,11 @@ class RobotMain(Node):
                                         mvacc=1000, radius=20.0, wait=False)
         if not self._check_code(code, 'set_position'):
             return
-
-
-
-    def test_main(self):
-        # self.motion_comeback(3)
-
-
-
-        # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
         
-
-        # tuple_c = arm.get_position()
-        # list_c = tuple_c[1]
-        # current_position = list_c[:6]
-
-        # a = ((-160) - current_position[1])
-
-        # print(a)
-
-        # 우측 배드 초기 위치
-        code = self._arm.set_position(*[-200 ,  0  , 400 , 180, 0, 90], speed=50,
-                                        mvacc=100, radius=20.0, wait=True)
-        if not self._check_code(code, 'set_position'):
-            return
-        
-
-        # goal = [-319.68, -130.56]
+    def motion_tracking(self):
 
         flag = 1
 
-        
         while True:
             tuple_c = arm.get_position()
             list_c = tuple_c[1]
@@ -4729,11 +4761,10 @@ class RobotMain(Node):
                 if (a > 1 or a < -1) or (b > 1 or b < -1):
                     print(f'들어옴 {current_position[0]}        {a}')
                     flag = 1
-            
 
 
 
-
+    def test_main(self):
 
         #----------initial----------
         # self.sound = Hi5_Sound()
@@ -4787,29 +4818,28 @@ class RobotMain(Node):
 
         # self.capsule_position = 1
 
-        # self.motion_grab_capsule()
+        # self.motion_grab_capsule()1
 
-        # self.motion_check_sealing()
+        # self.motion_check_sealing()2
 
-        # self.motion_place_capsule()
+        # self.motion_place_capsule()3
 
-        # self.motion_grab_cup()
+        # self.motion_grab_cup()4
 
-        # self.motion_make_icecream()
+        # self.motion_make_icecream()5
 
-        # self.motion_icecream_to_topping()
+        # self.motion_topping(self.topping_list)6
 
-        # self.topping_combination(self.topping_list)
+        # self.motion_Dondurma()7
 
-        # self.motion_Dondurma()
-
-        # self.motion_trash_capsule()
+        # self.motion_trash_capsule()8
 
         # self.motion_home()
 
 
         # 실링 체크 실패했을 때
         # self.motion_place_fail_capsule()
+        # self.sound.Effect_play(f'sealing.mp3')
 
 
         # 돈두르마시 감지 안됐을 때
@@ -4823,16 +4853,32 @@ class RobotMain(Node):
         # self.motion_home()
 
         # self.motion_cleaning(0)
+        # self.motion_cleaning(1, self.tracking_position[0], self.tracking_position[1], self.tracking_angle)
 
-        # self.motion_cleaning(1, -319.68, -130.56, 42.6)
-
-        # self.motion_cleaning(1, 290.94, -100.48, 146.89)
+        # # self.trash_position()
+        # # for i in range(0,self.tracking_cnt):
+        # #     self.trash_angle()
+            
+        # #     if self.tracking_angle != None:
+        # #         print(f"\n\n\n x = {self.tracking_position[0]} y =  {self.tracking_position[1]} deg = {self.tracking_angle}\n\n\n")
+        # #         # self.motion_cleaning(1, self.tracking_position[0], self.tracking_position[1], self.tracking_angle)
+        # #         self.tracking_position.clear()
+        # #         self.tracking_angle = None
 
         # self.motion_home()
 
    
 
 
+
+
+
+
+
+
+
+        # print('get_position :{0} \nget_position(radian) :{1} \nget_servo_angle :{2}'.format(arm.get_position(), arm.get_position(is_radian=True), arm.get_servo_angle()))
+        
         #-------init part-------
 
         # good = 0
@@ -5098,15 +5144,15 @@ if __name__ == '__main__':
     # warning_thread.start()
     # print('warning_thread_start')
 
-    trash_thread = Thread(target=robot_main.trash_position)
-    trash_thread.start()
-    print('warning_thread_start')
+    # trash_thread = Thread(target=robot_main.trash_position)
+    # trash_thread.start()
+    # print('trash_thread_start')
     
 
     # socket_thread.join()
     # joint_state_thread.join()
     run_thread.join()
-    trash_thread.join()
+    # trash_thread.join()
     # warning_thread.join()
 
     
